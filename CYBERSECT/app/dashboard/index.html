@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIR SOC - Automated Incident Response Console</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        soc: {
+                            bg: '#090d16',
+                            card: '#111827',
+                            border: '#1f293d',
+                            accent: '#10b981',
+                            alert: '#f43f5e',
+                            warning: '#f59e0b',
+                            info: '#3b82f6',
+                            cyber: '#00f0ff'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+                        sans: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            const tab = document.getElementById('tab-' + tabId);
+            const button = document.getElementById('btn-' + tabId);
+            if (tab) tab.classList.add('active');
+            if (button) button.classList.add('active');
+        }
+    </script>
+    <!-- Chart.js for SOC Metrics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        
+        body {
+            background-color: #060911;
+            color: #576980;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Neon Glow Effects */
+        .glow-red {
+            box-shadow: 0 0 15px rgba(244, 63, 94, 0.35);
+        }
+        .glow-green {
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.35);
+        }
+        .glow-cyber {
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.25);
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #090d16;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1f293d;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #374151;
+        }
+
+        /* Scanline Overlay for Cyberpunk Vibe */
+        .scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            ), linear-gradient(
+                90deg,
+                rgba(255, 0, 0, 0.03),
+                rgba(0, 255, 0, 0.01),
+                rgba(0, 0, 255, 0.03)
+            );
+            background-size: 100% 3px, 6px 100%;
+            pointer-events: none;
+        }
+
+        @keyframes map-pulse {
+            0%, 100% { opacity: .9; r: 5px; }
+            50% { opacity: .35; r: 13px; }
+        }
+
+        .map-marker-pulse {
+            animation: map-pulse 2s ease-out infinite;
+        }
+    </style>
+    <!-- Custom Alert/Modal Popup Kustom SOC -->
+<div id="customModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5 sm:p-6 w-[calc(100%-2rem)] max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl relative">
+        <div class="flex items-center gap-3 mb-4">
+            <div id="modalIcon" class="p-2 rounded-lg bg-cyan-500/20 text-cyan-400">🛡️</div>
+            <h3 id="modalTitle" class="text-lg font-bold text-white tracking-wide">Security Notification</h3>
+        </div>
+        <div id="modalBody" class="text-sm text-slate-300 space-y-3 mb-5 bg-slate-950/50 p-4 rounded-lg border border-slate-800">
+            <!-- Konten hasil dinamis akan masuk ke sini -->
+        </div>
+        <div class="flex justify-end">
+            <button onclick="closeCustomModal()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold rounded-lg transition">
+                Close / Acknowledge
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function showCustomModal(title, content, type = 'info') {
+        document.getElementById('modalTitle').textContent = title;
+        const body = document.getElementById('modalBody');
+        body.replaceChildren();
+        if (content && typeof content === 'object' && !Array.isArray(content)) {
+            const summary = content.summary && typeof content.summary === 'object'
+                ? content.summary
+                : content;
+            const summaryGrid = document.createElement('dl');
+            summaryGrid.className = 'grid grid-cols-1 sm:grid-cols-2 gap-2';
+            Object.entries(summary).forEach(([key, value]) => {
+                if (value === null || typeof value === 'object') return;
+                const item = document.createElement('div');
+                item.className = 'min-w-0 rounded-lg border border-slate-800 bg-slate-900/80 p-3';
+                const label = document.createElement('dt');
+                label.className = 'text-[10px] uppercase tracking-wider text-slate-500 font-mono';
+                label.textContent = key.replaceAll('_', ' ');
+                const valueElement = document.createElement('dd');
+                valueElement.className = 'mt-1 break-words text-sm text-slate-100';
+                valueElement.textContent = String(value);
+                item.append(label, valueElement);
+                summaryGrid.appendChild(item);
+            });
+            if (summaryGrid.childElementCount) body.appendChild(summaryGrid);
+
+            const details = document.createElement('details');
+            details.className = 'group';
+            const heading = document.createElement('summary');
+            heading.className = 'cursor-pointer select-none text-xs font-mono text-cyan-300 hover:text-cyan-200';
+            heading.textContent = 'View full response';
+            const result = document.createElement('pre');
+            result.className = 'mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950 p-3 font-mono text-[11px] leading-relaxed text-slate-300';
+            result.textContent = JSON.stringify(content, null, 2);
+            details.append(heading, result);
+            body.appendChild(details);
+        } else {
+            const result = document.createElement('p');
+            result.className = 'whitespace-pre-wrap break-words';
+            result.textContent = typeof content === 'string' ? content : JSON.stringify(content);
+            body.appendChild(result);
+        }
+        document.getElementById('customModal').classList.remove('hidden');
+    }
+
+    function closeCustomModal() {
+        document.getElementById('customModal').classList.add('hidden');
+    }
+</script>
+</head>
+<body class="min-h-screen flex flex-col bg-[#060911] text-slate-200 antialiased relative selection:bg-rose-500 selection:text-white">
+    <div class="fixed inset-0 scanlines z-50 opacity-40"></div>
+
+    <!-- Header / Top Status Bar -->
+    <header class="border-b border-soc-border bg-soc-card/90 backdrop-blur sticky top-0 z-40 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+            
+            <!-- Brand & Status -->
+            <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400">
+                        <i data-lucide="shield-check" class="w-6 h-6 animate-pulse"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="font-bold text-lg tracking-wider text-white font-mono">AIR // SOC CONSOLE</h1>
+                            <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">SOC MONITORING</span>
+                        </div>
+                        <p id="backendVersion" class="text-xs text-slate-400">AIR-DS Enterprise Security Decision Engine</p>
+                    </div>
+                </div>
+
+                <!-- API Connection Badge -->
+                <div id="apiStatusBadge" class="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span>API: CONNECTED</span>
+                </div>
+            </div>
+
+            <!-- Top Security Metrics KPI Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full md:w-auto font-mono text-xs">
+                <div class="bg-soc-bg border border-soc-border p-2.5 rounded-lg flex flex-col">
+                    <span class="text-slate-400 text-[10px] uppercase">High Severity</span>
+                    <span id="metricFirewall" class="text-base font-bold text-emerald-400">0</span>
+                </div>
+                <div class="bg-soc-bg border border-soc-border p-2.5 rounded-lg flex flex-col">
+                    <span class="text-slate-400 text-[10px] uppercase">Incidents Recorded</span>
+                    <span id="metricNeutralized" class="text-base font-bold text-rose-400">0</span>
+                </div>
+                <div class="bg-soc-bg border border-soc-border p-2.5 rounded-lg flex flex-col">
+                    <span class="text-slate-400 text-[10px] uppercase">Last Incident</span>
+                    <span id="metricMTTR" class="text-base font-bold text-cyan-400">—</span>
+                </div>
+                <div class="bg-soc-bg border border-soc-border p-2.5 rounded-lg flex flex-col">
+                    <span class="text-slate-400 text-[10px] uppercase">Critical Incidents</span>
+                    <span id="metricIsolated" class="text-base font-bold text-amber-400">0</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+
+        <section class="bg-soc-card border border-soc-border rounded-xl p-4" aria-labelledby="backend-access-title">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                    <h2 id="backend-access-title" class="text-sm font-semibold uppercase tracking-wider text-white font-mono">Backend access</h2>
+                    <p class="text-xs text-slate-400 mt-1">Enter the configured AIR_DS_API_KEY to use protected endpoints. It stays in page memory only and is cleared when you reload or close this tab.</p>
+                </div>
+                <form onsubmit="saveApiKey(); return false;" class="flex flex-col sm:flex-row gap-2 w-full lg:max-w-2xl">
+                    <label class="sr-only" for="apiKeyInput">Backend API key</label>
+                    <input id="apiKeyInput" type="password" autocomplete="off" placeholder="AIR_DS_API_KEY" class="flex-1 min-w-0 bg-soc-bg border border-soc-border rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-cyan-500">
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-mono font-semibold">CONNECT</button>
+                    <button type="button" onclick="clearApiKey()" class="px-4 py-2 rounded-lg border border-soc-border hover:bg-slate-800 text-slate-300 text-xs font-mono">CLEAR</button>
+                </form>
+            </div>
+            <p id="authStatus" role="status" aria-live="polite" class="mt-3 text-xs font-mono text-amber-400">API key required for protected features.</p>
+        </section>
+
+        <!-- Top Section: Visual Charts & Interactive Attack Simulator -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Visual Metric 1: Attack Frequency Bar Chart -->
+            <div class="bg-soc-card border border-soc-border rounded-xl p-4 flex flex-col">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300 font-mono flex items-center gap-2">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4 text-cyan-400"></i> Attack Vector Frequency
+                    </h2>
+                </div>
+                <div class="flex-1 min-h-[180px] relative">
+                    <canvas id="attackTypeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Visual Metric 2: Severity Distribution Pie Chart -->
+            <div class="bg-soc-card border border-soc-border rounded-xl p-4 flex flex-col">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300 font-mono flex items-center gap-2">
+                        <i data-lucide="pie-chart" class="w-4 h-4 text-rose-400"></i> Severity Distribution
+                    </h2>
+                </div>
+                <div class="flex-1 min-h-[180px] relative">
+                    <canvas id="severityChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Interactive Attack Simulator Box -->
+            <div class="bg-soc-card border border-soc-border rounded-xl p-4 flex flex-col justify-between border-l-4 border-l-rose-500">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <h2 class="text-sm font-semibold uppercase tracking-wider text-rose-400 font-mono flex items-center gap-2">
+                            <i data-lucide="zap" class="w-4 h-4"></i> Incident Event Simulator
+                        </h2>
+                        <span class="text-[10px] font-mono text-slate-400">TEST ONLY</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mb-4">Submit a synthetic incident to the backend for dashboard testing. This does not launch an attack or enforce firewall/container actions.</p>
+                    
+                    <div class="space-y-2 font-mono text-xs">
+                        <div>
+                            <label class="block text-slate-400 text-[10px] mb-1">TARGET ATTACK VECTOR</label>
+                            <select id="simAttackType" class="w-full bg-soc-bg border border-soc-border rounded p-2 text-slate-200 focus:outline-none focus:border-rose-500">
+                                <option value="SSH_BRUTE_FORCE">SSH Brute Force Attack</option>
+                                <option value="SQL_INJECTION">SQL Injection Query</option>
+                                <option value="DDOS_SYN_FLOOD">DDoS SYN Flood</option>
+                                <option value="MALWARE_UPLOAD">Malicious Binary Upload</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-slate-400 text-[10px] mb-1">SEVERITY LEVEL</label>
+                                <select id="simSeverity" class="w-full bg-soc-bg border border-soc-border rounded p-2 text-slate-200 focus:outline-none focus:border-rose-500">
+                                    <option value="HIGH" selected>HIGH</option>
+                                    <option value="MEDIUM">MEDIUM</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 text-[10px] mb-1">TARGET ASSET</label>
+                                <input id="simTarget" type="text" value="auth-gateway-01" class="w-full bg-soc-bg border border-soc-border rounded p-2 text-slate-200 focus:outline-none focus:border-rose-500">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-soc-border/50 flex gap-2">
+                    <button id="btnTriggerAttack" onclick="triggerSimulatedAttack()" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-mono font-semibold py-2 px-3 rounded text-xs transition flex items-center justify-center gap-2 glow-red">
+                        <i data-lucide="send" class="w-4 h-4"></i> LOG TEST INCIDENT
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <section class="overflow-hidden rounded-xl border border-soc-border bg-soc-card" aria-labelledby="global-map-title">
+            <div class="flex flex-col gap-3 border-b border-soc-border p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h2 id="global-map-title" class="text-sm font-semibold tracking-wider text-white font-mono">GLOBAL ATTACK MAP</h2>
+                        <span class="rounded border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-mono text-cyan-300">LIVE + SIMULATION</span>
+                    </div>
+                    <p class="mt-1 text-xs text-slate-400">Proxy detections use the configured geolocation provider; test incidents stay visibly synthetic. A location does not identify a person.</p>
+                </div>
+                <div class="flex gap-2 text-[10px] font-mono">
+                    <span class="rounded bg-slate-950 px-2 py-1 text-slate-400"><span id="mapAttackCount" class="text-cyan-300">0</span> PROXY EVENTS</span>
+                    <span class="rounded bg-slate-950 px-2 py-1 text-slate-400"><span id="mapDemoCount" class="text-amber-300">0</span> DEMO</span>
+                    <span class="rounded bg-slate-950 px-2 py-1 text-slate-400"><span id="mapCountryCount" class="text-cyan-300">0</span> PROXY COUNTRIES</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+                <div class="min-w-0 border-b border-soc-border p-2 sm:p-4 xl:border-b-0 xl:border-r">
+                    <svg id="globalAttackMap" class="h-auto w-full" viewBox="0 0 1097 768" role="img" aria-label="Supplied world map showing locally geolocated proxy detections and visibly labeled synthetic test incidents">
+                        <defs>
+                            <filter id="markerGlow" x="-100%" y="-100%" width="300%" height="300%">
+                                <feGaussianBlur stdDeviation="3" result="blur"/>
+                                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                            </filter>
+                        </defs>
+                        <rect width="1097" height="768" fill="#ffffff"/>
+                        <image href="/dashboard/worldmap.jpg" x="0" y="0" width="1097" height="768" preserveAspectRatio="none"/>
+                        <g id="attackMapMarkers"></g>
+                    </svg>
+                    <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 px-2 text-[9px] font-mono text-slate-500">
+                        <span><span class="mr-1 inline-block h-2 w-2 rounded-full bg-rose-400"></span>SSH BRUTE FORCE</span>
+                        <span><span class="mr-1 inline-block h-2 w-2 rounded-full bg-orange-400"></span>SQL INJECTION</span>
+                        <span><span class="mr-1 inline-block h-2 w-2 rounded-full bg-fuchsia-400"></span>DDoS SYN FLOOD</span>
+                        <span><span class="mr-1 inline-block h-2 w-2 rounded-full bg-cyan-300"></span>MALWARE UPLOAD</span>
+                    </div>
+                </div>
+                <aside class="min-w-0 p-4" aria-labelledby="map-event-list-title">
+                    <div class="mb-3 flex items-center justify-between">
+                        <h3 id="map-event-list-title" class="text-xs font-semibold tracking-wider text-slate-200 font-mono">LIVE + DEMO EVENTS</h3>
+                        <span class="text-[9px] font-mono text-slate-500">LATEST 12</span>
+                    </div>
+                    <div id="mapEventList" class="max-h-72 space-y-2 overflow-y-auto" aria-live="polite">
+                        <p class="rounded-lg border border-dashed border-slate-700 p-4 text-center text-xs text-slate-500">Connect to load live proxy detections and demo incidents.</p>
+                    </div>
+                    <div class="mt-4 border-t border-soc-border pt-3">
+                        <h3 class="mb-2 text-[10px] font-semibold tracking-wider text-slate-300 font-mono">PROXY COUNTRIES BY CONTINENT</h3>
+                        <div id="mapCountryGroups" class="max-h-36 space-y-2 overflow-y-auto" aria-live="polite">
+                            <p class="text-[10px] text-slate-500">Connect to load country data from the configured geolocation provider.</p>
+                        </div>
+                    </div>
+                    <p id="geoStatus" class="mt-3 border-t border-soc-border pt-3 text-[10px] leading-relaxed text-amber-300">Connect to load geolocation provider status.</p>
+                    <p class="mt-2 text-[10px] leading-relaxed text-slate-500">IP locations are approximate, not identity. Private IPs are not geolocated. The supplied map has no country borders; proxy markers use configured provider coordinates, while demo events remain synthetic.</p>
+                </aside>
+            </div>
+        </section>
+
+        <section class="space-y-3" aria-labelledby="security-tools-title">
+            <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+                <div>
+                    <h2 id="security-tools-title" class="text-base font-semibold font-mono tracking-wider text-white">BACKEND SECURITY TOOLS</h2>
+                    <p class="text-xs text-slate-400 mt-1">Protected tools use the API key above. Results below come directly from the active backend.</p>
+                </div>
+                <span class="text-[10px] font-mono text-slate-500">LOCAL API · AUTHENTICATED</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <form onsubmit="evaluateDNNModel(); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-blue-300 font-mono">Resource anomaly scoring</h3>
+                        <p class="text-xs text-slate-500 mt-1">The active endpoint uses a weighted threshold score; no trained model weights are loaded.</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="text-[10px] text-slate-400">CPU %<input id="dnnCpu" type="number" min="0" max="100" step="0.1" value="89.4" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100"></label>
+                        <label class="text-[10px] text-slate-400">GPU %<input id="dnnGpu" type="number" min="0" max="100" step="0.1" value="78.2" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100"></label>
+                        <label class="text-[10px] text-slate-400">RAM %<input id="dnnRam" type="number" min="0" max="100" step="0.1" value="91" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100"></label>
+                        <label class="text-[10px] text-slate-400">Network PPS<input id="dnnNetwork" type="number" min="0" step="0.1" value="320.5" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100"></label>
+                    </div>
+                    <button class="w-full rounded-lg bg-blue-600 hover:bg-blue-500 py-2 text-xs font-mono font-semibold text-white">EVALUATE METRICS</button>
+                </form>
+
+                <form onsubmit="runRealFIMAudit(); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-emerald-300 font-mono">File integrity (FIM)</h3>
+                        <p class="text-xs text-slate-500 mt-1">Compare a supplied hash with the configured baseline; this check does not read the file from disk.</p>
+                    </div>
+                    <label class="block text-[10px] text-slate-400">Baseline path
+                        <select id="fimFilePath" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100">
+                            <option value="/app/main.py" data-baseline="8f4c29b1029481a7bcf89104bf7c8911">/app/main.py</option>
+                            <option value="/etc/shadow" data-baseline="e3b0c44298fc1c149afbf4c8996fb924">/etc/shadow</option>
+                        </select>
+                    </label>
+                    <label class="block text-[10px] text-slate-400">Current hash
+                        <input id="fimCurrentHash" type="text" value="8f4c29b1029481a7bcf89104bf7c8911" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                    </label>
+                    <label class="block text-[10px] text-slate-400">Trigger
+                        <select id="fimTriggerMode" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100">
+                            <option value="hash_change">Hash change</option>
+                            <option value="weekly">Weekly audit</option>
+                            <option value="monthly">Monthly audit</option>
+                        </select>
+                    </label>
+                    <button class="w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 py-2 text-xs font-mono font-semibold text-white">RUN FIM CHECK</button>
+                </form>
+
+                <form onsubmit="checkMalwareHash(); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-rose-300 font-mono">Malware hash intelligence</h3>
+                        <p class="text-xs text-slate-500 mt-1">Check a file hash against the configured threat-intel integration.</p>
+                    </div>
+                    <label class="block text-[10px] text-slate-400">File hash
+                        <input id="malwareHash" type="text" minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" placeholder="Paste SHA-256 hash" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                    </label>
+                    <button class="w-full rounded-lg bg-rose-700 hover:bg-rose-600 py-2 text-xs font-mono font-semibold text-white">CHECK HASH</button>
+                </form>
+
+                <form onsubmit="lookupCve(); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-orange-300 font-mono">CISA KEV lookup</h3>
+                        <p class="text-xs text-slate-500 mt-1">Search the locally imported Known Exploited Vulnerabilities catalog.</p>
+                    </div>
+                    <label class="block text-[10px] text-slate-400">CVE ID
+                        <input id="cveLookupId" type="text" pattern="CVE-[0-9]{4}-[0-9]{4,}" placeholder="CVE-2021-44228" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                    </label>
+                    <button class="w-full rounded-lg bg-orange-700 hover:bg-orange-600 py-2 text-xs font-mono font-semibold text-white">LOOK UP CVE</button>
+                </form>
+
+                <form onsubmit="scanUploadedFile(); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-amber-300 font-mono">File safety scan</h3>
+                        <p class="text-xs text-slate-500 mt-1">Upload a file for static inspection. Maximum size: 2 MiB.</p>
+                    </div>
+                    <label class="block text-[10px] text-slate-400">Choose file
+                        <input id="securityFile" type="file" class="mt-1 block w-full text-xs text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-xs file:text-white">
+                    </label>
+                    <button class="w-full rounded-lg bg-amber-700 hover:bg-amber-600 py-2 text-xs font-mono font-semibold text-white">SCAN FILE</button>
+                </form>
+
+                <form onsubmit="analyzeSqliteDatabase(); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-fuchsia-300 font-mono">SQLite database static analysis</h3>
+                        <p class="text-xs text-slate-500 mt-1">Audit the server-configured SQLite database, or upload a snapshot. Schema only; rows are not read. Maximum size: 16 MiB.</p>
+                    </div>
+                    <button type="button" onclick="analyzeLiveSqliteDatabase()" class="w-full rounded-lg border border-fuchsia-500/50 py-2 text-xs font-mono font-semibold text-fuchsia-200 hover:bg-fuchsia-950/40">AUDIT CONFIGURED LIVE DATABASE</button>
+                    <p class="text-center text-[10px] font-mono text-slate-500">OR ANALYZE A SNAPSHOT</p>
+                    <div>
+                        <label class="block text-[10px] text-slate-400">SQLite database file
+                            <input id="sqliteDatabaseFile" type="file" accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3" class="mt-1 block w-full text-xs text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-xs file:text-white">
+                        </label>
+                    </div>
+                    <button class="w-full rounded-lg bg-fuchsia-700 hover:bg-fuchsia-600 py-2 text-xs font-mono font-semibold text-white">ANALYZE UPLOADED SNAPSHOT</button>
+                </form>
+
+                <form onsubmit="auditConfiguration(); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-cyan-300 font-mono">Configuration audit</h3>
+                        <p class="text-xs text-slate-500 mt-1">Submit configuration indicators for backend policy checks.</p>
+                    </div>
+                    <label class="flex items-center gap-2 text-xs text-slate-300">
+                        <input id="configDebug" type="checkbox" class="accent-cyan-500"> Debug mode enabled
+                    </label>
+                    <label class="block text-[10px] text-slate-400">Allowed hosts
+                        <input id="configAllowedHosts" type="text" value="localhost" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100">
+                    </label>
+                    <label class="block text-[10px] text-slate-400">Secret key (used only for length audit)
+                        <input id="configSecretKey" type="password" autocomplete="off" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100">
+                    </label>
+                    <button class="w-full rounded-lg bg-cyan-700 hover:bg-cyan-600 py-2 text-xs font-mono font-semibold text-white">AUDIT CONFIGURATION</button>
+                </form>
+
+                <form onsubmit="ingestTelemetry(); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <h3 class="text-sm font-semibold text-violet-300 font-mono">Raw telemetry</h3>
+                            <p class="text-xs text-slate-500 mt-1">Submit and review recent backend log entries.</p>
+                        </div>
+                        <button type="button" onclick="loadTelemetry()" class="text-[10px] font-mono text-cyan-300 hover:text-cyan-200">REFRESH</button>
+                    </div>
+                    <label class="block text-[10px] text-slate-400">Source
+                        <input id="telemetrySource" type="text" value="SOC Dashboard" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                    </label>
+                    <label class="block text-[10px] text-slate-400">Log message
+                        <textarea id="telemetryMessage" rows="2" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required></textarea>
+                    </label>
+                    <button class="w-full rounded-lg bg-violet-700 hover:bg-violet-600 py-2 text-xs font-mono font-semibold text-white">SUBMIT TELEMETRY</button>
+                    <pre id="telemetryOutput" class="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-soc-bg p-2 text-[10px] text-slate-400">Connect to view recent logs.</pre>
+                </form>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-4" aria-labelledby="intel-store-title">
+            <div class="lg:col-span-3 flex items-center justify-between">
+                <div>
+                    <h2 id="intel-store-title" class="text-base font-semibold font-mono tracking-wider text-white">LOCAL THREAT INTELLIGENCE</h2>
+                    <p class="text-xs text-slate-400 mt-1">SQLite-backed catalog; import timestamps and record counts reflect local source data.</p>
+                </div>
+                <button onclick="refreshThreatIntel().catch(error => showCustomModal('Threat intel refresh failed', error.message))" class="rounded-lg border border-soc-border px-3 py-2 text-[10px] font-mono text-cyan-300 hover:bg-slate-800">REFRESH</button>
+            </div>
+            <article class="bg-soc-card border border-soc-border rounded-xl p-4">
+                <h3 class="text-xs text-slate-400 font-mono">CISA KEV RECORDS</h3>
+                <p id="intelCisaCount" class="mt-2 text-2xl font-bold text-orange-300">—</p>
+            </article>
+            <article class="bg-soc-card border border-soc-border rounded-xl p-4">
+                <h3 class="text-xs text-slate-400 font-mono">EXPLOIT-DB METADATA</h3>
+                <p id="intelExploitCount" class="mt-2 text-2xl font-bold text-amber-300">—</p>
+            </article>
+            <article class="bg-soc-card border border-soc-border rounded-xl p-4">
+                <h3 class="text-xs text-slate-400 font-mono">MALWARE SHA-256 INDICATORS</h3>
+                <p id="intelMalwareCount" class="mt-2 text-2xl font-bold text-rose-300">—</p>
+            </article>
+            <div id="intelSources" class="lg:col-span-3 text-xs font-mono text-slate-500">Connect to view local source import status.</div>
+        </section>
+
+        <section class="grid grid-cols-1 xl:grid-cols-2 gap-4" aria-labelledby="network-scan-title">
+            <form onsubmit="runSafeNetworkScan(); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                <div>
+                    <h2 id="network-scan-title" class="text-sm font-semibold text-cyan-300 font-mono">SAFE NETWORK DISCOVERY</h2>
+                    <p class="mt-1 text-xs text-slate-400">TCP connection checks only. One private/loopback IP; no exploit or vulnerability tests.</p>
+                </div>
+                <label class="block text-[10px] text-slate-400">Authorized target IP
+                    <input id="networkScanTarget" type="text" inputmode="decimal" placeholder="192.168.1.10" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                </label>
+                <label class="block text-[10px] text-slate-400">Scan profile
+                    <select id="networkScanProfile" onchange="updateScanProfile()" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100">
+                        <option value="discovery">Host discovery</option>
+                        <option value="basic">Basic TCP check</option>
+                        <option value="non_credentialed">Non-credentialed perimeter check</option>
+                        <option value="advanced">Advanced (choose allowed ports)</option>
+                    </select>
+                </label>
+                <label id="advancedPortsLabel" class="hidden block text-[10px] text-slate-400">Ports (comma-separated; max 8)
+                    <input id="advancedPorts" type="text" placeholder="22,80,443" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100">
+                    <span class="mt-1 block text-slate-500">Allowed: 22, 53, 80, 443, 445, 3389, 8080, 8443</span>
+                </label>
+                <button class="w-full rounded-lg bg-cyan-700 hover:bg-cyan-600 py-2 text-xs font-mono font-semibold text-white">RUN SAFE CHECK</button>
+            </form>
+
+            <article class="bg-soc-card border border-soc-border rounded-xl p-4">
+                <h3 class="text-sm font-semibold text-white font-mono">SCAN CAPABILITY STATUS</h3>
+                <ul class="mt-3 space-y-2 text-xs">
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Discovery / basic / custom TCP ports</span><span class="text-emerald-400">AVAILABLE</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">OS fingerprinting</span><span class="text-amber-300">NOT AVAILABLE</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Dynamic plugin scans / vulnerability checks</span><span class="text-amber-300">NOT AVAILABLE</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Credentialed patch / SMB / SSH audit</span><span class="text-amber-300">NOT AVAILABLE</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Badlock, Shellshock, DROWN, Intel AMT tests</span><span class="text-amber-300">NOT AVAILABLE</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Shadow IT / endpoint malware / ransomware scan</span><span class="text-amber-300">NOT AVAILABLE</span></li>
+                </ul>
+                <p class="mt-3 text-[10px] text-slate-500">Unsupported checks are not simulated. File uploads can be checked against locally imported malware hashes.</p>
+            </article>
+        </section>
+
+        <!-- Middle Section: Real-time Live Threat Detection Feed -->
+        <div class="bg-soc-card border border-soc-border rounded-xl p-4 flex flex-col">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-soc-border">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="activity" class="w-5 h-5 text-rose-500 animate-pulse"></i>
+                    <h2 class="text-base font-semibold font-mono tracking-wider text-white">LIVE THREAT DETECTION FEED</h2>
+                    <span id="threatCountBadge" class="bg-rose-500/20 text-rose-400 text-xs px-2 py-0.5 rounded font-mono border border-rose-500/30">14 ALERTS</span>
+                </div>
+                <div class="flex items-center gap-3 text-xs font-mono text-slate-400">
+                    <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-rose-500"></span> CRITICAL</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span> HIGH</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-cyan-500"></span> MEDIUM</span>
+                </div>
+            </div>
+
+            <section class="bg-soc-card border border-soc-border rounded-xl p-4" aria-labelledby="attack-history-title">
+                <div class="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                        <h2 id="attack-history-title" class="text-base font-semibold font-mono tracking-wider text-white">PROXY ATTACK HISTORY</h2>
+                        <p class="text-xs text-slate-400 mt-1">Persisted separately from threat intelligence; request bodies are not stored.</p>
+                    </div>
+                    <button onclick="refreshAttackHistory().catch(error => showCustomModal('Attack history refresh failed', error.message))" class="rounded-lg border border-soc-border px-3 py-2 text-[10px] font-mono text-cyan-300 hover:bg-slate-800">REFRESH</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs font-mono">
+                        <thead class="bg-soc-bg/80 text-slate-400 uppercase text-[10px]">
+                            <tr><th class="p-2">Time</th><th class="p-2">Category</th><th class="p-2">Source IP</th><th class="p-2">Method / path</th><th class="p-2">Fingerprint</th></tr>
+                        </thead>
+                        <tbody id="attackHistoryBody" class="divide-y divide-soc-border/50">
+                            <tr><td colspan="5" class="p-4 text-center text-slate-500">Connect to load proxy events.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Threat Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs font-mono">
+                    <thead class="bg-soc-bg/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-soc-border">
+                        <tr>
+                            <th class="p-3">Timestamp</th>
+                            <th class="p-3">Severity</th>
+                            <th class="p-3">Attack Vector</th>
+                            <th class="p-3">Source IP</th>
+                            <th class="p-3">Target Asset</th>
+                            <th class="p-3">Backend Report</th>
+                        </tr>
+                    </thead>
+                    <tbody id="threatFeedBody" class="divide-y divide-soc-border/50">
+                        <!-- Dynamic Threat Logs Will Be Inserted Here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <section class="bg-soc-card border border-soc-border rounded-xl p-4" aria-labelledby="enforcement-title">
+            <h2 id="enforcement-title" class="text-sm font-semibold uppercase tracking-wider text-slate-200 font-mono">Enforcement integration status</h2>
+            <p class="mt-2 text-xs leading-relaxed text-slate-400">
+                The active backend records incidents and reports response recommendations. It does not expose firewall rule management or container isolation controls, so this dashboard does not display mock blocklists or offer fake unblock/resume actions.
+            </p>
+        </section>
+    </main>
+
+    <!-- Console Log Notification Banner -->
+    <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+
+    <!-- Application Script Logic -->
+    <script>
+        let threats = [];
+        let realAttacks = [];
+        let geolocationState = 'not_configured';
+        let apiKey = '';
+        let attackChartInstance = null;
+        let severityChartInstance = null;
+        const DEMO_ATTACKER_POOL = {
+            SSH_BRUTE_FORCE: [
+                { country: 'Russia', ip: '198.51.100.11', lat: 55.75, lon: 37.62 },
+                { country: 'China', ip: '198.51.100.12', lat: 39.9, lon: 116.4 },
+                { country: 'North Korea', ip: '198.51.100.13', lat: 39.03, lon: 125.75 }
+            ],
+            SQL_INJECTION: [
+                { country: 'Germany', ip: '203.0.113.21', lat: 52.52, lon: 13.405 },
+                { country: 'Brazil', ip: '203.0.113.22', lat: -15.79, lon: -47.88 },
+                { country: 'India', ip: '203.0.113.23', lat: 28.61, lon: 77.21 }
+            ],
+            DDOS_SYN_FLOOD: [
+                { country: 'United Kingdom', ip: '192.0.2.31', lat: 51.507, lon: -0.128 },
+                { country: 'France', ip: '192.0.2.32', lat: 48.857, lon: 2.352 },
+                { country: 'Japan', ip: '192.0.2.33', lat: 35.676, lon: 139.65 }
+            ],
+            MALWARE_UPLOAD: [
+                { country: 'Romania', ip: '198.51.100.41', lat: 44.426, lon: 26.102 },
+                { country: 'South Africa', ip: '198.51.100.42', lat: -25.747, lon: 28.229 },
+                { country: 'Australia', ip: '198.51.100.43', lat: -35.28, lon: 149.13 }
+            ]
+        };
+        const DEMO_ATTACK_COLORS = {
+            SSH_BRUTE_FORCE: '#fb7185',
+            SQL_INJECTION: '#fb923c',
+            DDOS_SYN_FLOOD: '#e879f9',
+            MALWARE_UPLOAD: '#67e8f9'
+        };
+        const DEMO_SOURCE_BY_IP = Object.fromEntries(
+            Object.entries(DEMO_ATTACKER_POOL).flatMap(([attackType, locations]) =>
+                locations.map(location => [location.ip, { ...location, attackType }])
+            )
+        );
+
+        window.addEventListener('DOMContentLoaded', () => {
+            window.lucide?.createIcons();
+            initCharts();
+            document.getElementById('fimFilePath').addEventListener('change', event => {
+                document.getElementById('fimCurrentHash').value =
+                    event.target.selectedOptions[0].dataset.baseline;
+            });
+            updateUI();
+            checkBackendHealth();
+            setInterval(() => {
+                checkBackendHealth();
+                if (apiKey) refreshDashboardData().catch(error => console.error('Dashboard refresh failed:', error));
+            }, 15000);
+        });
+
+        async function checkBackendHealth() {
+            const badge = document.getElementById('apiStatusBadge');
+            try {
+                const response = await fetch('/');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const backend = await response.json();
+                document.getElementById('backendVersion').textContent =
+                    `${backend.engine} v${backend.version}`;
+                badge.className = 'flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
+                badge.textContent = 'API: CONNECTED';
+            } catch (error) {
+                badge.className = 'flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono bg-rose-500/10 text-rose-400 border border-rose-500/30';
+                badge.textContent = 'API: UNAVAILABLE';
+            }
+        }
+
+        function updateAuthStatus(message, isError = false) {
+            const element = document.getElementById('authStatus');
+            element.textContent = message;
+            element.className = `mt-3 text-xs font-mono ${isError ? 'text-rose-400' : 'text-emerald-400'}`;
+        }
+
+        async function apiRequest(path, options = {}) {
+            if (!apiKey) throw new Error('Enter the configured AIR_DS_API_KEY to use protected backend features.');
+
+            const headers = new Headers(options.headers || {});
+            headers.set('X-AIR-DS-KEY', apiKey);
+            if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+                headers.set('Content-Type', 'application/json');
+            }
+
+            let response;
+            try {
+                response = await fetch(path, { ...options, headers });
+            } catch (error) {
+                throw new Error('Cannot reach the backend. Open the dashboard from the running FastAPI server.');
+            }
+
+            const result = await response.json().catch(() => null);
+            if (response.status === 401) {
+                clearApiKey();
+                throw new Error('The API key was rejected. Check AIR_DS_API_KEY and try again.');
+            }
+            if (!response.ok) {
+                const detail = result?.detail;
+                throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail || `Request failed (${response.status})`));
+            }
+            return result;
+        }
+
+        async function saveApiKey() {
+            const candidate = document.getElementById('apiKeyInput').value.trim();
+            if (!candidate) {
+                updateAuthStatus('Enter AIR_DS_API_KEY before connecting.', true);
+                return;
+            }
+            apiKey = candidate;
+            try {
+                await refreshDashboardData();
+                document.getElementById('apiKeyInput').value = '';
+                updateAuthStatus('Authenticated. The key is held in this browser tab only.');
+                showToast('Backend authorization successful.', 'info');
+            } catch (error) {
+                updateAuthStatus(error.message, true);
+            }
+        }
+
+        function clearApiKey() {
+            apiKey = '';
+            threats = [];
+            realAttacks = [];
+            geolocationState = 'not_configured';
+            updateUI();
+            renderDemoAttackMap([]);
+            renderAttackHistory([]);
+            document.getElementById('geoStatus').textContent = 'Connect to load live events and local geolocation status.';
+            document.getElementById('intelCisaCount').textContent = '—';
+            document.getElementById('intelExploitCount').textContent = '—';
+            document.getElementById('intelMalwareCount').textContent = '—';
+            document.getElementById('intelSources').textContent = 'Connect to view local source import status.';
+            document.getElementById('telemetryOutput').textContent = 'Connect to view recent logs.';
+            updateAuthStatus('API key cleared. Protected features are disconnected.');
+        }
+
+        async function refreshDashboardData() {
+            await Promise.all([
+                refreshIncidents(),
+                refreshThreatIntel(),
+                refreshAttackHistory(),
+                loadTelemetry()
+            ]);
+        }
+
+        async function refreshIncidents() {
+            const result = await apiRequest('/api/v1/incidents');
+            threats = Array.isArray(result?.incidents) ? result.incidents : [];
+            updateUI();
+            renderDemoAttackMap();
+        }
+
+        async function refreshThreatIntel() {
+            const result = await apiRequest('/api/v1/threat-intel/summary');
+            document.getElementById('intelCisaCount').textContent = result.counts.cisa_kev;
+            document.getElementById('intelExploitCount').textContent = result.counts.exploitdb_metadata;
+            document.getElementById('intelMalwareCount').textContent = result.counts.malware_indicators;
+            const sources = document.getElementById('intelSources');
+            sources.replaceChildren();
+            if (!result.sources.length) {
+                sources.textContent = 'No external threat-intelligence datasets imported yet.';
+                return;
+            }
+            result.sources.forEach(source => {
+                const item = document.createElement('p');
+                item.className = 'py-1';
+                item.textContent = `${source.source}: ${source.record_count} records · updated ${new Date(source.updated_at).toLocaleString()}`;
+                sources.appendChild(item);
+            });
+        }
+
+        async function refreshAttackHistory() {
+            const result = await apiRequest('/api/v1/security/attack-history?limit=100');
+            realAttacks = Array.isArray(result.attacks) ? result.attacks : [];
+            renderAttackHistory(realAttacks);
+            renderDemoAttackMap();
+            const geoStatus = result.geolocation || {};
+            geolocationState = geoStatus.status || 'unavailable';
+            const statusElement = document.getElementById('geoStatus');
+            statusElement.textContent = geoStatus.message || 'Geolocation status unavailable.';
+            statusElement.className = `mt-3 border-t border-soc-border pt-3 text-[10px] leading-relaxed ${
+                geoStatus.status === 'ready' ? 'text-emerald-300' : 'text-amber-300'
+            }`;
+        }
+
+        function renderAttackHistory(attacks) {
+            const body = document.getElementById('attackHistoryBody');
+            body.replaceChildren();
+            if (!attacks.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 5;
+                cell.className = 'p-4 text-center text-slate-500';
+                cell.textContent = apiKey ? 'No proxy detections recorded.' : 'Connect to load proxy events.';
+                row.appendChild(cell);
+                body.appendChild(row);
+                return;
+            }
+            attacks.forEach(attack => {
+                const row = document.createElement('tr');
+                [new Date(attack.timestamp).toLocaleString(), attack.category, attack.client_ip,
+                    `${attack.method} ${attack.path}`, attack.request_sha256.slice(0, 16)].forEach(value => {
+                    const cell = document.createElement('td');
+                    cell.className = 'p-2 text-slate-300';
+                    cell.textContent = value;
+                    row.appendChild(cell);
+                });
+                body.appendChild(row);
+            });
+        }
+
+        function updateUI() {
+            const feedBody = document.getElementById('threatFeedBody');
+            feedBody.replaceChildren();
+
+            threats.forEach(incident => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-soc-border/30 transition';
+                const values = [
+                    [incident.timestamp, 'text-slate-400'],
+                    [incident.severity, ''],
+                    [incident.attack_type, 'text-white font-semibold'],
+                    [incident.source_ip, 'text-cyan-400'],
+                    [incident.target_asset, 'text-slate-300'],
+                    [incident.action_recommendation || incident.status, 'text-emerald-400']
+                ];
+                values.forEach(([value, className], index) => {
+                    const cell = document.createElement('td');
+                    cell.className = `p-3 ${className}`;
+                    if (index === 1) {
+                        const badge = document.createElement('span');
+                        const severityClass = incident.severity === 'CRITICAL'
+                            ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                            : incident.severity === 'HIGH'
+                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                                : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30';
+                        badge.className = `px-2 py-0.5 rounded text-[10px] font-bold border ${severityClass}`;
+                        badge.textContent = value || 'UNKNOWN';
+                        cell.appendChild(badge);
+                    } else {
+                        cell.textContent = value || '—';
+                    }
+                    row.appendChild(cell);
+                });
+                feedBody.appendChild(row);
+            });
+
+            if (!threats.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 6;
+                cell.className = 'p-6 text-center text-slate-500';
+                cell.textContent = apiKey ? 'No incidents have been recorded.' : 'Connect with an API key to load backend incidents.';
+                row.appendChild(cell);
+                feedBody.appendChild(row);
+            }
+
+            const criticalCount = threats.filter(item => item.severity === 'CRITICAL').length;
+            const highCount = threats.filter(item => item.severity === 'HIGH').length;
+            document.getElementById('threatCountBadge').textContent = `${threats.length} INCIDENTS`;
+            document.getElementById('metricNeutralized').textContent = String(threats.length);
+            document.getElementById('metricFirewall').textContent = String(highCount);
+            document.getElementById('metricIsolated').textContent = String(criticalCount);
+            document.getElementById('metricMTTR').textContent = threats.length
+                ? new Date(threats[0].timestamp).toLocaleTimeString()
+                : '—';
+            updateCharts();
+        }
+
+        function mapCoordinates(latitude, longitude) {
+            return {
+                x: 548.5 + longitude * 2.5,
+                y: 395 - latitude * 3.1
+            };
+        }
+
+        function renderDemoAttackMap(incidents = threats) {
+            const markers = document.getElementById('attackMapMarkers');
+            const list = document.getElementById('mapEventList');
+            const countryGroups = document.getElementById('mapCountryGroups');
+            const simulations = incidents
+                .filter(incident => incident.source === 'AIR SOC Dashboard Test' && DEMO_SOURCE_BY_IP[incident.source_ip])
+                .map(incident => ({ ...incident, demoSource: DEMO_SOURCE_BY_IP[incident.source_ip] }))
+                .sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp))
+                .slice(0, 30);
+            const liveDetections = realAttacks
+                .map(event => ({
+                    ...event,
+                    country: event.location?.city
+                        ? `${event.location.city}, ${event.location.country}`
+                        : (event.location?.country || 'Location unavailable'),
+                    hasCoordinates: event.location?.status === 'located'
+                        && Number.isFinite(event.location.latitude)
+                        && Number.isFinite(event.location.longitude),
+                    isLive: true
+                }))
+                .sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp))
+                .slice(0, 30);
+            const visibleEvents = [
+                ...simulations.map(event => ({ ...event, isLive: false })),
+                ...liveDetections
+            ].sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp));
+            markers.replaceChildren();
+            list.replaceChildren();
+            countryGroups.replaceChildren();
+            document.getElementById('mapAttackCount').textContent = realAttacks.length;
+            document.getElementById('mapDemoCount').textContent = simulations.length;
+            const locatedDetections = liveDetections.filter(event => event.hasCoordinates && event.location.country);
+            const countries = new Map();
+            locatedDetections.forEach(event => {
+                const location = event.location;
+                const key = location.country_code || location.country;
+                const country = countries.get(key) || {
+                    name: location.country,
+                    code: location.country_code,
+                    continent: location.continent || 'Unknown continent',
+                    events: 0
+                };
+                country.events += 1;
+                countries.set(key, country);
+            });
+            document.getElementById('mapCountryCount').textContent = countries.size;
+
+            if (!countries.size) {
+                const emptyCountries = document.createElement('p');
+                emptyCountries.className = 'text-[10px] text-slate-500';
+                emptyCountries.textContent = 'No geolocated proxy countries. Configure local GeoLite2 City data; demo countries are not live data.';
+                countryGroups.appendChild(emptyCountries);
+            } else {
+                const continents = new Map();
+                [...countries.values()].forEach(country => {
+                    const continent = continents.get(country.continent) || [];
+                    continent.push(country);
+                    continents.set(country.continent, continent);
+                });
+                [...continents.entries()].sort(([left], [right]) => left.localeCompare(right)).forEach(([continent, entries]) => {
+                    const row = document.createElement('p');
+                    row.className = 'text-[10px] leading-relaxed text-slate-400';
+                    entries.sort((left, right) => left.name.localeCompare(right.name));
+                    row.textContent = `${continent}: ${entries.map(country =>
+                        `${country.name}${country.code ? ` (${country.code})` : ''} · ${country.events}`
+                    ).join(', ')}`;
+                    countryGroups.appendChild(row);
+                });
+            }
+
+            if (!visibleEvents.length) {
+                const empty = document.createElement('p');
+                empty.className = 'rounded-lg border border-dashed border-slate-700 p-4 text-center text-xs text-slate-500';
+                empty.textContent = apiKey
+                    ? (realAttacks.length
+                    ? 'Proxy detections are recorded, but no locations are available. Configure GeoLite2 City; private IPs remain unlocated.'
+                    : 'No detections yet. Proxy events appear when the sensor blocks a request; demo events can be logged separately.')
+                    : 'Connect to load live detections and demo incidents.';
+                list.appendChild(empty);
+                return;
+            }
+
+            visibleEvents
+                .filter(event => !event.isLive || event.hasCoordinates)
+                .slice(0, 30)
+                .forEach(event => {
+                const latitude = event.isLive ? event.location.latitude : event.demoSource.lat;
+                const longitude = event.isLive ? event.location.longitude : event.demoSource.lon;
+                const source = mapCoordinates(latitude, longitude);
+                const category = event.isLive ? event.category : event.attack_type;
+                const color = DEMO_ATTACK_COLORS[category] || '#22d3ee';
+
+                const marker = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                marker.setAttribute('filter', 'url(#markerGlow)');
+                const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+                const country = event.isLive
+                    ? `${event.location.country}${event.location.country_code ? ` (${event.location.country_code})` : ''}`
+                    : event.demoSource.country;
+                title.textContent = `${event.isLive ? 'PROXY DETECTION' : 'SIMULATION ONLY'} · ${category} · ${country} · ${event.isLive ? event.client_ip : event.source_ip}`;
+                marker.appendChild(title);
+                const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                pulse.setAttribute('cx', source.x);
+                pulse.setAttribute('cy', source.y);
+                pulse.setAttribute('r', '7');
+                pulse.setAttribute('fill', color);
+                pulse.setAttribute('fill-opacity', '.24');
+                pulse.setAttribute('stroke', color);
+                pulse.setAttribute('stroke-opacity', '.8');
+                pulse.setAttribute('class', event.isLive ? '' : 'map-marker-pulse');
+                const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                dot.setAttribute('cx', source.x);
+                dot.setAttribute('cy', source.y);
+                dot.setAttribute('r', '3.5');
+                dot.setAttribute('fill', color);
+                marker.append(pulse, dot);
+                markers.appendChild(marker);
+                });
+
+            visibleEvents.slice(0, 12).forEach(event => {
+                const row = document.createElement('div');
+                row.className = `rounded-lg border ${event.isLive ? 'border-cyan-500/30' : 'border-slate-800'} bg-slate-950/70 p-3`;
+                const header = document.createElement('div');
+                header.className = 'flex items-center justify-between gap-2';
+                const country = document.createElement('span');
+                country.className = 'truncate text-xs font-semibold text-slate-100';
+                country.textContent = event.isLive
+                    ? (event.location.city
+                        ? `${event.location.city}, ${event.location.country}`
+                        : (event.location.country || 'Location unavailable'))
+                    : event.demoSource.country;
+                const badge = document.createElement('span');
+                badge.className = 'shrink-0 rounded px-1.5 py-0.5 text-[8px] font-mono';
+                const category = event.isLive ? event.category : event.attack_type;
+                badge.style.color = event.isLive ? '#67e8f9' : '#fbbf24';
+                badge.style.backgroundColor = event.isLive ? '#164e6380' : '#78350f80';
+                badge.textContent = `${event.isLive ? 'PROXY' : 'DEMO'} · ${category.replaceAll('_', ' ')}`;
+                header.append(country, badge);
+                const source = document.createElement('p');
+                source.className = 'mt-1 text-[10px] font-mono text-slate-400';
+                source.textContent = event.isLive
+                    ? `${event.client_ip} · ${event.method} ${event.path}`
+                    : `${event.source_ip} · ${event.severity || 'TEST'}`;
+                row.append(header, source);
+                list.appendChild(row);
+            });
+        }
+
+        async function triggerSimulatedAttack() {
+            const severity = document.getElementById('simSeverity').value;
+            const attackType = document.getElementById('simAttackType').value;
+            const locations = DEMO_ATTACKER_POOL[attackType] || [];
+            if (!locations.length) {
+                showCustomModal('Unsupported test vector', 'Choose one of the configured test attack types.');
+                return;
+            }
+            const priorSimulations = threats.filter(incident =>
+                incident.source === 'AIR SOC Dashboard Test' && incident.attack_type === attackType
+            ).length;
+            const fakeSource = locations[priorSimulations % locations.length];
+            const payload = {
+                source: 'AIR SOC Dashboard Test',
+                source_ip: fakeSource.ip,
+                attack_type: attackType,
+                target_asset: document.getElementById('simTarget').value.trim(),
+                severity
+            };
+            if (!payload.target_asset) {
+                showCustomModal('Target required', 'Enter a target asset name before submitting the test event.');
+                return;
+            }
+            try {
+                await apiRequest('/api/v1/alert', { method: 'POST', body: JSON.stringify(payload) });
+                await refreshIncidents();
+                showToast(`Demo incident plotted from ${fakeSource.country} (${severity}).`, 'info');
+            } catch (error) {
+                showCustomModal('Incident request failed', error.message);
+            }
+        }
+
+        async function evaluateDNNModel() {
+            const payload = {
+                cpu_usage: Number(document.getElementById('dnnCpu').value),
+                gpu_usage: Number(document.getElementById('dnnGpu').value),
+                ram_usage: Number(document.getElementById('dnnRam').value),
+                network_pps: Number(document.getElementById('dnnNetwork').value)
+            };
+            try {
+                showCustomModal('DNN resource evaluation', await apiRequest('/api/v1/detect/dnn-anomaly', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                }));
+            } catch (error) {
+                showCustomModal('DNN request failed', error.message);
+            }
+        }
+
+        async function runRealFIMAudit() {
+            const payload = {
+                file_path: document.getElementById('fimFilePath').value,
+                current_hash: document.getElementById('fimCurrentHash').value.trim(),
+                trigger_mode: document.getElementById('fimTriggerMode').value
+            };
+            try {
+                showCustomModal('File integrity check', await apiRequest('/api/v1/detect/fim-audit', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                }));
+            } catch (error) {
+                showCustomModal('FIM request failed', error.message);
+            }
+        }
+
+        async function checkMalwareHash() {
+            const fileHash = document.getElementById('malwareHash').value.trim();
+            if (!/^[a-fA-F0-9]{64}$/.test(fileHash)) {
+                showCustomModal('Invalid hash', 'Enter a 64-character hexadecimal SHA-256 hash.');
+                return;
+            }
+            try {
+                showCustomModal('Malware hash intelligence', await apiRequest('/api/v1/threat-intel/malware-hash', {
+                    method: 'POST',
+                    body: JSON.stringify({ file_hash: fileHash })
+                }));
+            } catch (error) {
+                showCustomModal('Hash check failed', error.message);
+            }
+        }
+
+        async function lookupCve() {
+            const cveId = document.getElementById('cveLookupId').value.trim().toUpperCase();
+            try {
+                showCustomModal('CISA KEV record', await apiRequest('/api/v1/threat-intel/cve', {
+                    method: 'POST',
+                    body: JSON.stringify({ cve_id: cveId })
+                }));
+            } catch (error) {
+                showCustomModal('CVE lookup failed', error.message);
+            }
+        }
+
+        function updateScanProfile() {
+            const isAdvanced = document.getElementById('networkScanProfile').value === 'advanced';
+            document.getElementById('advancedPortsLabel').classList.toggle('hidden', !isAdvanced);
+        }
+
+        async function runSafeNetworkScan() {
+            const profile = document.getElementById('networkScanProfile').value;
+            const payload = {
+                target: document.getElementById('networkScanTarget').value.trim(),
+                profile
+            };
+            if (profile === 'advanced') {
+                const rawPorts = document.getElementById('advancedPorts').value.trim();
+                const ports = rawPorts.split(',').map(port => Number(port.trim()));
+                if (!rawPorts || ports.some(port => !Number.isInteger(port))) {
+                    showCustomModal('Invalid ports', 'Enter comma-separated port numbers from the allowed list.');
+                    return;
+                }
+                payload.ports = ports;
+            }
+            try {
+                const result = await apiRequest('/api/v1/scanners/network', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                showCustomModal('Network discovery result', result);
+            } catch (error) {
+                showCustomModal('Network check failed', error.message);
+            }
+        }
+
+        async function scanUploadedFile() {
+            const file = document.getElementById('securityFile').files[0];
+            if (!file) {
+                showCustomModal('File required', 'Choose a file to scan.');
+                return;
+            }
+            if (file.size > 2 * 1024 * 1024) {
+                showCustomModal('File too large', 'The file scan limit is 2 MiB.');
+                return;
+            }
+            const body = new FormData();
+            body.append('file', file);
+            try {
+                showCustomModal('File safety scan', await apiRequest('/api/v1/security/scan-file', {
+                    method: 'POST',
+                    body
+                }));
+            } catch (error) {
+                showCustomModal('File scan result', error.message);
+            }
+        }
+
+        async function analyzeSqliteDatabase() {
+            const file = document.getElementById('sqliteDatabaseFile').files[0];
+            if (!file) {
+                showCustomModal('Database required', 'Choose a SQLite database file to analyze.');
+                return;
+            }
+            if (file.size > 16 * 1024 * 1024) {
+                showCustomModal('Database too large', 'The SQLite analysis limit is 16 MiB.');
+                return;
+            }
+            const body = new FormData();
+            body.append('file', file);
+            try {
+                showCustomModal('SQLite database analysis', await apiRequest('/api/v1/security/analyze-sqlite', {
+                    method: 'POST',
+                    body
+                }));
+            } catch (error) {
+                showCustomModal('Database analysis failed', error.message);
+            }
+        }
+
+        async function analyzeLiveSqliteDatabase() {
+            try {
+                showCustomModal('Configured SQLite database analysis', await apiRequest('/api/v1/security/analyze-sqlite/live'));
+            } catch (error) {
+                showCustomModal('Live database audit unavailable', error.message);
+            }
+        }
+
+        async function auditConfiguration() {
+            const secretKey = document.getElementById('configSecretKey');
+            const payload = {
+                debug: document.getElementById('configDebug').checked,
+                allowed_hosts: document.getElementById('configAllowedHosts').value.trim(),
+                secret_key: secretKey.value
+            };
+            try {
+                showCustomModal('Configuration audit', await apiRequest('/api/v1/security/audit-config', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                }));
+            } catch (error) {
+                showCustomModal('Configuration audit failed', error.message);
+            } finally {
+                secretKey.value = '';
+            }
+        }
+
+        async function ingestTelemetry() {
+            const payload = {
+                source_name: document.getElementById('telemetrySource').value.trim(),
+                log_data: document.getElementById('telemetryMessage').value.trim()
+            };
+            if (!payload.source_name || !payload.log_data) {
+                showCustomModal('Telemetry required', 'Enter both a source and a log message.');
+                return;
+            }
+            try {
+                const result = await apiRequest('/api/v1/telemetry/raw', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                document.getElementById('telemetryMessage').value = '';
+                await loadTelemetry();
+                showToast(`Telemetry indexed (${result.total_buffered} buffered).`, 'info');
+            } catch (error) {
+                showCustomModal('Telemetry submission failed', error.message);
+            }
+        }
+
+        async function loadTelemetry() {
+            try {
+                const result = await apiRequest('/api/v1/telemetry/raw');
+                document.getElementById('telemetryOutput').textContent =
+                    JSON.stringify((result.raw_logs || []).slice(0, 5), null, 2);
+            } catch (error) {
+                document.getElementById('telemetryOutput').textContent = error.message;
+            }
+        }
+
+        function showToast(msg, type = 'danger') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `p-3 rounded-lg border text-xs font-mono shadow-xl transition-all duration-300 transform translate-y-2 pointer-events-auto ${
+                type === 'danger' ? 'bg-rose-950/90 border-rose-500/50 text-rose-200' : 'bg-slate-900/90 border-cyan-500/50 text-cyan-200'
+            }`;
+            toast.textContent = msg;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        // Initialize Visual Metric Charts using Chart.js
+        function initCharts() {
+            if (!window.Chart) {
+                console.warn('Chart.js is unavailable; dashboard data remains accessible without charts.');
+                return;
+            }
+            // 1. Attack Type Bar Chart
+            const ctx1 = document.getElementById('attackTypeChart').getContext('2d');
+            attackChartInstance = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: ['SSH Brute', 'SQLi', 'DDoS SYN', 'Malware'],
+                    datasets: [{
+                        data: [0, 0, 0, 0],
+                        backgroundColor: ['#3b82f6', '#f59e0b', '#f43f5e', '#10b981'],
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 9 } } },
+                        y: { grid: { color: '#1f293d' }, ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 9 } } }
+                    }
+                }
+            });
+
+            // 2. Severity Pie Chart
+            const ctx2 = document.getElementById('severityChart').getContext('2d');
+            severityChartInstance = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: ['CRITICAL', 'HIGH', 'MEDIUM'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#f43f5e', '#f59e0b', '#06b6d4'],
+                        borderWidth: 2,
+                        borderColor: '#111827'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update Charts Data dynamically
+        function updateCharts() {
+            if(!attackChartInstance || !severityChartInstance) return;
+
+            const typeCounts = { 'SSH_BRUTE_FORCE': 0, 'SQL_INJECTION': 0, 'DDOS_SYN_FLOOD': 0, 'MALWARE_UPLOAD': 0 };
+            const sevCounts = { 'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0 };
+
+            threats.forEach(t => {
+                if(typeCounts[t.attack_type] !== undefined) typeCounts[t.attack_type]++;
+                if(sevCounts[t.severity] !== undefined) sevCounts[t.severity]++;
+            });
+
+            attackChartInstance.data.datasets[0].data = [
+                typeCounts['SSH_BRUTE_FORCE'],
+                typeCounts['SQL_INJECTION'],
+                typeCounts['DDOS_SYN_FLOOD'],
+                typeCounts['MALWARE_UPLOAD']
+            ];
+            attackChartInstance.update();
+
+            severityChartInstance.data.datasets[0].data = [
+                sevCounts['CRITICAL'],
+                sevCounts['HIGH'],
+                sevCounts['MEDIUM']
+            ];
+            severityChartInstance.update();
+        }
+    </script>
+</body>
+</html>

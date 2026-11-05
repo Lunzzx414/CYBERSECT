@@ -1,0 +1,19 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run AIR-DS dashboard",
+			"type": "shell",
+			"command": "./CYBERSECT/run_local.sh",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Start updated backend",
+			"type": "shell",
+			"command": "./CYBERSECT/run_local.sh",
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}
