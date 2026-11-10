@@ -1,0 +1,23 @@
+{
+  "platform": "Synthetic demo fixture (not a real device)",
+  "scan_time": "2026-11-10T00:00:00+00:00",
+  "file_count": 1,
+  "files": [
+    {
+      "path": "root-demo/CYBERSECT-endpoint-agent-demo.txt",
+      "sha256": "711015af926c82661367f28bf9560c0d77d9c4665531b20233ae3ba571adec2c",
+      "size": 38,
+      "modified_time": "2026-11-10T00:00:00+00:00"
+    }
+  ],
+  "baseline": {
+    "status": "initial",
+    "heuristic": true,
+    "description": "Synthetic UI test fixture; not collected from an endpoint."
+  },
+  "limits": {
+    "max_files": 10000,
+    "max_file_size_bytes": 52428800,
+    "content_uploaded": false
+  }
+}

@@ -1,9 +1,12 @@
 from app.multi_sensor_engine import MultiSensorEngine
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File
-import httpx
+import logging
 import re
 import json
-from datetime import datetime, timezone
+
+
+LOGGER = logging.getLogger(__name__)
+MAX_SCAN_FILE_BYTES = 2 * 1024 * 1024
 
 app = FastAPI(title="AIR-DS Integrated Enterprise Security Gateway & Multi-Sensor Engine")
 
@@ -29,13 +32,13 @@ async def air_ds_multisensor_middleware(request: Request, call_next):
             break
             
     if detected_vector:
-        # Multi-sensor logging & warning
-        print(f"\n🚨 [AIR-DS MULTI-SENSOR ALERT] Threat Neutralized!")
-        print(f"   -> Sensor Triggered: Signature-based IDS / WAF Engine")
-        print(f"   -> Attack Vector: {detected_vector}")
-        print(f"   -> Source IP: {client_ip}")
-        print(f"   -> Target Asset: {path}?{query_params}")
-        print(f"   -> Automated Response: IP Blocked, Session Terminated, Incident Logged.\n")
+        LOGGER.warning(
+            "Blocked request matching a gateway signature (vector=%s client_ip=%s path=%r). "
+            "No IP block, session revocation, or durable incident action is configured.",
+            detected_vector,
+            client_ip,
+            path,
+        )
         
         raise HTTPException(
             status_code=403,
@@ -64,11 +67,18 @@ def secure_endpoint(user: str):
 
 @app.post("/api/v1/sensors/file-scan")
 async def scan_uploaded_file(file: UploadFile = File(...)):
-    content = await file.read()
+    content = await file.read(MAX_SCAN_FILE_BYTES + 1)
+    await file.close()
+    if len(content) > MAX_SCAN_FILE_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds the 2 MiB scan limit.")
     filename = file.filename or "unknown_file"
     scan_result = MultiSensorEngine.inspect_file_content(filename, content)
     if scan_result["malicious"]:
-        print(f"🚨 [MALWARE SENSOR ALERT] Malicious file blocked: {filename} ({scan_result['threat_classification']})")
+        LOGGER.warning(
+            "Blocked suspicious upload (filename=%r classification=%s).",
+            filename,
+            scan_result["threat_classification"],
+        )
         raise HTTPException(status_code=403, detail=scan_result)
     return {"status": "clean", "details": scan_result}
 
@@ -76,5 +86,5 @@ async def scan_uploaded_file(file: UploadFile = File(...)):
 def audit_config(config: dict):
     issues = MultiSensorEngine.audit_system_configuration(config)
     if issues:
-        print(f"⚠️ [CONFIG SENSOR AUDIT] Security misconfigurations found: {issues}")
+        LOGGER.warning("Configuration audit found %d security finding(s).", len(issues))
     return {"status": "audited", "findings": issues}

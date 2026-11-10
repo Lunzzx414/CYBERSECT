@@ -2,8 +2,9 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON="${PROJECT_DIR}/../venv/bin/python"
-UVICORN="${PROJECT_DIR}/../venv/bin/uvicorn"
+VENV_DIR="$(cd -- "${PROJECT_DIR}/.." && pwd)/venv"
+PYTHON="${VENV_DIR}/bin/python"
+UVICORN="${VENV_DIR}/bin/uvicorn"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/air-ds"
 ENV_FILE="${CONFIG_DIR}/environment"
 

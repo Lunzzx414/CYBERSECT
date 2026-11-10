@@ -1,7 +1,9 @@
 import asyncio
 import hashlib
 import hmac
+import os
 import re
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,7 +12,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Security, UploadFile,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.security.api_key import APIKeyHeader
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 from app.config import settings
 from app.data_store import (
     count_threat_intel_records,
@@ -29,6 +31,7 @@ from app.geolocation import enrich_attack_geolocation, geolocation_status
 from app.hardened_security_engine import HardenedSecurityEngine
 from app.proxy_sensor import ProxySecuritySensor
 from app.scanners_integration import ExternalScannerIntegration
+from app.credentialed_audits import audit_smb_shares, audit_ssh_patches
 
 app = FastAPI(
     title="AIR-DS Enterprise Security Decision Engine",
@@ -56,7 +59,9 @@ API_KEY_NAME = "X-AIR-DS-KEY"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 def verify_api_key(api_key: Optional[str] = Security(api_key_header)):
-    if not api_key or api_key != settings.API_KEY:
+    if not api_key or not hmac.compare_digest(
+        api_key.encode("utf-8"), settings.API_KEY.encode("utf-8")
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API Key"
@@ -107,6 +112,33 @@ class SafeNetworkScanRequest(BaseModel):
     profile: Literal["discovery", "basic", "advanced", "non_credentialed"] = "basic"
     ports: List[int] = Field(default_factory=list, max_length=8)
 
+class SafeNmapAuditRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=64)
+    ports: List[int] = Field(default_factory=list, max_length=8)
+
+class SSHAuditRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=64)
+    username: str = Field(..., min_length=1, max_length=128)
+    identity_file: str = Field(..., min_length=1, max_length=512)
+
+class SMBAuditRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=64)
+    username: str = Field(..., min_length=1, max_length=128)
+    password: SecretStr
+    domain: str = Field(default="", max_length=128)
+
+class EndpointFileEntry(BaseModel):
+    path: str = Field(..., min_length=1, max_length=1024)
+    sha256: str = Field(..., pattern=r"^[a-fA-F0-9]{64}$")
+    size: int = Field(..., ge=0, le=50 * 1024 * 1024)
+
+class EndpointReportRequest(BaseModel):
+    platform: str = Field(..., min_length=1, max_length=64)
+    scan_time: str = Field(..., min_length=1, max_length=64)
+    file_count: int = Field(..., ge=0, le=10000)
+    files: List[EndpointFileEntry] = Field(default_factory=list, max_length=10000)
+    baseline: Optional[Dict[str, Any]] = None
+
 @app.get("/")
 def read_root():
     return {
@@ -127,6 +159,22 @@ def read_dashboard_map():
 @app.get("/api/v1/incidents", dependencies=[Depends(verify_api_key)])
 async def get_incidents():
     return {"incidents": INCIDENT_STORE[:100]}
+
+@app.get("/api/v1/scanners/capabilities", dependencies=[Depends(verify_api_key)])
+async def scanner_capabilities():
+    nmap_available = shutil.which("nmap") is not None
+    raw_socket_privileges = hasattr(os, "geteuid") and os.geteuid() == 0
+    return {
+        "network_discovery": {"status": "available", "detail": "Built-in private network discovery; max 256 addresses."},
+        "os_identification": {"status": "available" if nmap_available and raw_socket_privileges else "limited", "detail": "Nmap OS fingerprinting requires raw-socket privileges; otherwise only service hints are returned."},
+        "safe_configuration_checks": {"status": "available", "detail": "Read-only SSH, HTTP header, and SMB signing/protocol observations."},
+        "safe_nmap_audit": {"status": "available" if nmap_available else "needs_setup", "detail": "Nmap with a fixed safe script allowlist; no exploit, brute-force, or intrusive scripts."},
+        "active_vulnerability_scans": {"status": "not_implemented", "detail": "Exploit and plugin vulnerability tests are not implemented."},
+        "ssh_audit": {"status": "available" if shutil.which("ssh") else "needs_setup", "detail": "Requires OpenSSH client, a key under server ~/.ssh, and strict known_hosts enrollment."},
+        "smb_audit": {"status": "available" if shutil.which("smbclient") else "needs_setup", "detail": "Requires smbclient and credentials for an authorized IPv4 host."},
+        "named_vulnerability_probes": {"status": "not_implemented", "detail": "Badlock, Shellshock, DROWN, and Intel AMT are not actively probed."},
+        "endpoint_agent": {"status": "available", "detail": "Windows/Linux Python agent; explicit roots and local baseline required."},
+    }
 
 @app.get("/api/v1/security/attack-history", dependencies=[Depends(verify_api_key)])
 async def get_attack_history(limit: int = 100):
@@ -324,6 +372,67 @@ async def run_network_discovery(payload: SafeNetworkScanRequest):
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+@app.post("/api/v1/scanners/nmap-safe", dependencies=[Depends(verify_api_key)])
+async def run_safe_nmap_audit(payload: SafeNmapAuditRequest):
+    try:
+        return await ExternalScannerIntegration.run_safe_nmap_audit(
+            payload.target,
+            payload.ports or None,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+@app.post("/api/v1/scanners/audit/ssh", dependencies=[Depends(verify_api_key)])
+async def run_ssh_audit(payload: SSHAuditRequest):
+    try:
+        return await audit_ssh_patches(payload.target, payload.username, payload.identity_file)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+@app.post("/api/v1/scanners/audit/smb", dependencies=[Depends(verify_api_key)])
+async def run_smb_audit(payload: SMBAuditRequest):
+    try:
+        return await audit_smb_shares(
+            payload.target,
+            payload.username,
+            payload.password.get_secret_value(),
+            payload.domain,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+@app.post("/api/v1/security/analyze-endpoint-report", dependencies=[Depends(verify_api_key)])
+async def analyze_endpoint_report(payload: EndpointReportRequest):
+    if payload.file_count != len(payload.files):
+        raise HTTPException(status_code=400, detail="Endpoint report file_count does not match files.")
+    matches = []
+    for file_hash in sorted({entry.sha256.lower() for entry in payload.files}):
+        try:
+            indicator = await asyncio.to_thread(find_malware_indicator, file_hash)
+        except (sqlite3.Error, OSError) as error:
+            raise HTTPException(status_code=503, detail="Threat-intelligence database is unavailable.") from error
+        if indicator:
+            matches.append({"sha256": file_hash, "threat_intel": "Malicious", "family": indicator.get("family") or "Unknown"})
+    baseline = payload.baseline or {}
+    baseline_status = baseline.get("status")
+    if baseline_status not in {"changed", "initial", "unchanged"}:
+        baseline_result = {"status": "not_provided"}
+    else:
+        baseline_result = {
+            "status": baseline_status,
+            "heuristic": True,
+            "description": "Agent-reported baseline change is heuristic and is not a ransomware verdict.",
+        }
+    return {
+        "platform": payload.platform,
+        "scan_time": payload.scan_time,
+        "files_analyzed": len(payload.files),
+        "malware_hash_matches": matches,
+        "agent_baseline_signal": baseline_result,
+        "verdict": "Known malicious hash match" if matches else "No local hash match; unknown files are not proven clean",
+        "analysis_limit": "File names and hashes only; no file content or network scanning is performed by this endpoint.",
+    }
 
 @app.post("/api/v1/scanners/sqlmap", dependencies=[Depends(verify_api_key)])
 async def trigger_sqlmap(payload: ScannerRequest):

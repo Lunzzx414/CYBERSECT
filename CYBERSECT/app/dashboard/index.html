@@ -532,10 +532,10 @@
             <form onsubmit="runSafeNetworkScan(); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
                 <div>
                     <h2 id="network-scan-title" class="text-sm font-semibold text-cyan-300 font-mono">SAFE NETWORK DISCOVERY</h2>
-                    <p class="mt-1 text-xs text-slate-400">TCP connection checks only. One private/loopback IP; no exploit or vulnerability tests.</p>
+                    <p class="mt-1 text-xs text-slate-400">Private/loopback IP or subnet up to 256 addresses. Allowlisted TCP ports; safe checks only.</p>
                 </div>
-                <label class="block text-[10px] text-slate-400">Authorized target IP
-                    <input id="networkScanTarget" type="text" inputmode="decimal" placeholder="192.168.1.10" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                <label class="block text-[10px] text-slate-400">Authorized private IP or CIDR (max 256 addresses)
+                    <input id="networkScanTarget" type="text" placeholder="192.168.1.0/24" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
                 </label>
                 <label class="block text-[10px] text-slate-400">Scan profile
                     <select id="networkScanProfile" onchange="updateScanProfile()" class="mt-1 w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100">
@@ -550,19 +550,48 @@
                     <span class="mt-1 block text-slate-500">Allowed: 22, 53, 80, 443, 445, 3389, 8080, 8443</span>
                 </label>
                 <button class="w-full rounded-lg bg-cyan-700 hover:bg-cyan-600 py-2 text-xs font-mono font-semibold text-white">RUN SAFE CHECK</button>
+                <button type="button" onclick="runSafeNmapAudit()" class="w-full rounded-lg border border-cyan-700 hover:bg-slate-800 py-2 text-xs font-mono font-semibold text-cyan-200">RUN SAFE NMAP SERVICE AUDIT</button>
             </form>
 
             <article class="bg-soc-card border border-soc-border rounded-xl p-4">
                 <h3 class="text-sm font-semibold text-white font-mono">SCAN CAPABILITY STATUS</h3>
                 <ul class="mt-3 space-y-2 text-xs">
-                    <li class="flex justify-between gap-3"><span class="text-slate-300">Discovery / basic / custom TCP ports</span><span class="text-emerald-400">AVAILABLE</span></li>
-                    <li class="flex justify-between gap-3"><span class="text-slate-300">OS fingerprinting</span><span class="text-amber-300">NOT AVAILABLE</span></li>
-                    <li class="flex justify-between gap-3"><span class="text-slate-300">Dynamic plugin scans / vulnerability checks</span><span class="text-amber-300">NOT AVAILABLE</span></li>
-                    <li class="flex justify-between gap-3"><span class="text-slate-300">Credentialed patch / SMB / SSH audit</span><span class="text-amber-300">NOT AVAILABLE</span></li>
-                    <li class="flex justify-between gap-3"><span class="text-slate-300">Badlock, Shellshock, DROWN, Intel AMT tests</span><span class="text-amber-300">NOT AVAILABLE</span></li>
-                    <li class="flex justify-between gap-3"><span class="text-slate-300">Shadow IT / endpoint malware / ransomware scan</span><span class="text-amber-300">NOT AVAILABLE</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Private subnet discovery / safe service checks</span><span data-capability="network_discovery" class="text-emerald-400">AVAILABLE</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">OS identification</span><span data-capability="os_identification" class="text-amber-300">LIMITED</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Safe HTTP / SSH / SMB configuration checks</span><span data-capability="safe_configuration_checks" class="text-emerald-400">AVAILABLE</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Nmap OS fingerprint / safe service scripts</span><span data-capability="safe_nmap_audit" class="text-slate-400">CONNECT TO CHECK</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Active plugin / exploit vulnerability tests</span><span data-capability="active_vulnerability_scans" class="text-amber-300">NOT IMPLEMENTED</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Credentialed SSH inventory / SMB3 share audit</span><span data-capability="credentialed_audits" class="text-slate-400">CONNECT TO CHECK</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Badlock, Shellshock, DROWN, Intel AMT probes</span><span data-capability="named_vulnerability_probes" class="text-amber-300">NOT IMPLEMENTED</span></li>
+                    <li class="flex justify-between gap-3"><span class="text-slate-300">Windows/Linux endpoint hash & baseline agent</span><span data-capability="endpoint_agent" class="text-emerald-400">AVAILABLE</span></li>
                 </ul>
-                <p class="mt-3 text-[10px] text-slate-500">Unsupported checks are not simulated. File uploads can be checked against locally imported malware hashes.</p>
+                <p id="scanCapabilityDetail" class="mt-3 text-[10px] text-slate-500">Connect with the API key to check SSH and SMB tool setup. Active plugin and named exploit tests are not implemented; running other scans will not change that.</p>
+            </article>
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-4" aria-label="Credentialed audits and endpoint analysis">
+            <form onsubmit="runCredentialedAudit('ssh'); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                <h2 class="text-sm font-semibold text-cyan-300 font-mono">READ-ONLY SSH PATCH INVENTORY</h2>
+                <p class="text-xs text-slate-400">Uses server-side OpenSSH, a key in ~/.ssh, and strict known_hosts. Linux reports cached package updates; Windows reports installed hotfixes.</p>
+                <input id="sshTarget" placeholder="Private target IP" class="w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                <input id="sshUsername" placeholder="SSH username" autocomplete="username" class="w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                <input id="sshIdentity" placeholder="Identity path under server ~/.ssh" class="w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                <button class="w-full rounded-lg bg-cyan-700 hover:bg-cyan-600 py-2 text-xs font-mono font-semibold text-white">RUN SSH INVENTORY</button>
+            </form>
+            <form onsubmit="runCredentialedAudit('smb'); return false;" class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3">
+                <h2 class="text-sm font-semibold text-cyan-300 font-mono">READ-ONLY SMB3 SHARE AUDIT</h2>
+                <p class="text-xs text-slate-400">Requires smbclient on the server. Credentials are used for one share-list request and then discarded; no files are read.</p>
+                <input id="smbTarget" placeholder="Private IPv4 target" class="w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                <input id="smbUsername" placeholder="SMB username" autocomplete="username" class="w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                <input id="smbDomain" placeholder="Domain (optional)" class="w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100">
+                <input id="smbPassword" type="password" placeholder="Password (transient)" autocomplete="current-password" class="w-full bg-soc-bg border border-soc-border rounded p-2 text-sm text-slate-100" required>
+                <button class="w-full rounded-lg bg-cyan-700 hover:bg-cyan-600 py-2 text-xs font-mono font-semibold text-white">RUN SMB3 AUDIT</button>
+            </form>
+            <article class="bg-soc-card border border-soc-border rounded-xl p-4 space-y-3 lg:col-span-2">
+                <h2 class="text-sm font-semibold text-cyan-300 font-mono">WINDOWS / LINUX ENDPOINT REPORT</h2>
+                <p class="text-xs text-slate-400">Run <code>python -m app.endpoint_agent --root /explicit/directory --output endpoint-report.json</code> on the endpoint (repeat --root as needed), then analyze the JSON report here. It hashes files locally; contents are not uploaded.</p>
+                <label class="block text-[10px] text-slate-400">Agent JSON report<input id="endpointReportFile" type="file" accept="application/json,.json" class="mt-1 w-full text-xs text-slate-300" required></label>
+                <button type="button" onclick="analyzeEndpointReport()" class="rounded-lg bg-cyan-700 hover:bg-cyan-600 px-4 py-2 text-xs font-mono font-semibold text-white">ANALYZE ENDPOINT REPORT</button>
             </article>
         </section>
 
@@ -778,8 +807,39 @@
                 refreshIncidents(),
                 refreshThreatIntel(),
                 refreshAttackHistory(),
-                loadTelemetry()
+                loadTelemetry(),
+                refreshScannerCapabilities()
             ]);
+        }
+
+        async function refreshScannerCapabilities() {
+            const result = await apiRequest('/api/v1/scanners/capabilities');
+            const statusText = {
+                available: 'AVAILABLE',
+                limited: 'LIMITED',
+                needs_setup: 'NEEDS SETUP',
+                not_implemented: 'NOT IMPLEMENTED'
+            };
+            const colorClass = {
+                available: 'text-emerald-400',
+                limited: 'text-amber-300',
+                needs_setup: 'text-amber-300',
+                not_implemented: 'text-amber-300'
+            };
+            Object.entries(result).forEach(([name, capability]) => {
+                if (name === 'ssh_audit' || name === 'smb_audit') return;
+                const badge = document.querySelector(`[data-capability="${name}"]`);
+                if (!badge) return;
+                badge.textContent = statusText[capability.status] || 'UNKNOWN';
+                badge.className = colorClass[capability.status] || 'text-slate-400';
+            });
+            const sshReady = result.ssh_audit?.status === 'available';
+            const smbReady = result.smb_audit?.status === 'available';
+            const credentialBadge = document.querySelector('[data-capability="credentialed_audits"]');
+            credentialBadge.textContent = sshReady && smbReady ? 'AVAILABLE' : `SSH ${sshReady ? 'READY' : 'NEEDS SETUP'} · SMB ${smbReady ? 'READY' : 'NEEDS SETUP'}`;
+            credentialBadge.className = sshReady && smbReady ? 'text-emerald-400' : 'text-amber-300';
+            document.getElementById('scanCapabilityDetail').textContent =
+                `SSH: ${result.ssh_audit?.detail || 'status unavailable'} SMB: ${result.smb_audit?.detail || 'status unavailable'}`;
         }
 
         async function refreshIncidents() {
@@ -1181,6 +1241,59 @@
                 showCustomModal('Network discovery result', result);
             } catch (error) {
                 showCustomModal('Network check failed', error.message);
+            }
+        }
+
+        async function runSafeNmapAudit() {
+            const payload = { target: document.getElementById('networkScanTarget').value.trim() };
+            if (!payload.target) return showCustomModal('Target required', 'Enter an authorized private IP or CIDR.');
+            if (document.getElementById('networkScanProfile').value === 'advanced') {
+                const rawPorts = document.getElementById('advancedPorts').value.trim();
+                const ports = rawPorts.split(',').map(port => Number(port.trim()));
+                if (!rawPorts || ports.some(port => !Number.isInteger(port))) {
+                    return showCustomModal('Invalid ports', 'Enter comma-separated port numbers from the allowed list.');
+                }
+                payload.ports = ports;
+            }
+            try {
+                const result = await apiRequest('/api/v1/scanners/nmap-safe', { method: 'POST', body: JSON.stringify(payload) });
+                showCustomModal('Safe Nmap audit result', result);
+            } catch (error) {
+                showCustomModal('Safe Nmap audit failed', error.message);
+            }
+        }
+
+        async function runCredentialedAudit(protocol) {
+            const isSsh = protocol === 'ssh';
+            const payload = isSsh ? {
+                target: document.getElementById('sshTarget').value.trim(),
+                username: document.getElementById('sshUsername').value.trim(),
+                identity_file: document.getElementById('sshIdentity').value.trim()
+            } : {
+                target: document.getElementById('smbTarget').value.trim(),
+                username: document.getElementById('smbUsername').value.trim(),
+                domain: document.getElementById('smbDomain').value.trim(),
+                password: document.getElementById('smbPassword').value
+            };
+            try {
+                const result = await apiRequest(`/api/v1/scanners/audit/${protocol}`, { method: 'POST', body: JSON.stringify(payload) });
+                showCustomModal(`${protocol.toUpperCase()} audit result`, result);
+            } catch (error) {
+                showCustomModal(`${protocol.toUpperCase()} audit failed`, error.message);
+            } finally {
+                if (!isSsh) document.getElementById('smbPassword').value = '';
+            }
+        }
+
+        async function analyzeEndpointReport() {
+            const file = document.getElementById('endpointReportFile').files[0];
+            if (!file) return showCustomModal('Report required', 'Choose an endpoint agent JSON report.');
+            if (file.size > 8 * 1024 * 1024) return showCustomModal('Report too large', 'The report limit is 8 MiB.');
+            try {
+                const report = JSON.parse(await file.text());
+                showCustomModal('Endpoint report analysis', await apiRequest('/api/v1/security/analyze-endpoint-report', { method: 'POST', body: JSON.stringify(report) }));
+            } catch (error) {
+                showCustomModal('Endpoint report analysis failed', error.message);
             }
         }
 

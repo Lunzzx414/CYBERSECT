@@ -1,8 +1,9 @@
 from fastapi import FastAPI, Request, HTTPException
-import httpx
+import logging
 import re
 
 app = FastAPI(title="AIR-DS Integrated Enterprise Gateway")
+LOGGER = logging.getLogger(__name__)
 
 # Signature WAF yang tertanam langsung pada Gateway AIR-DS
 THREAT_PATTERN = re.compile(r"('|\bOR\b|\bUNION\b|\bSELECT\b|--|%27|<script>|\.\./|etc/passwd|cat\b|exec\b)", re.IGNORECASE)
@@ -15,12 +16,12 @@ async def air_ds_built_in_sensor(request: Request, call_next):
     
     # Deteksi otonom berbasis signature security bawaan AIR-DS
     if THREAT_PATTERN.search(query_params) or THREAT_PATTERN.search(path):
-        # AIR-DS mencatat dan memberikan warning/peringatan keamanan secara instan di konsol/log sistem
-        print(f"\n🚨 [AIR-DS SECURITY WARNING] Autonomous Threat Detected!")
-        print(f"   -> Attack Type: SQL Injection (SQLi)")
-        print(f"   -> Source IP: {client_ip}")
-        print(f"   -> Target Endpoint: {path}?{query_params}")
-        print(f"   -> Action Taken: Playbook Executed -> IP Blocked & Session Terminated.\n")
+        LOGGER.warning(
+            "Blocked request matching a gateway signature (client_ip=%s path=%r). "
+            "No IP block or session revocation is configured.",
+            client_ip,
+            path,
+        )
         
         raise HTTPException(
             status_code=403, 

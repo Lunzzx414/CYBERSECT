@@ -23,11 +23,13 @@ separate PyTorch model definition has no trained weights and is not loaded by th
 Reported incident responses are recommendations only; firewall and container enforcement
 integrations are not configured.
 
-The dashboard offers bounded TCP discovery for a single private/loopback IP, checking
-only a short allowlist of common ports. It does not identify operating systems or test
-vulnerabilities. Public IPs, hostnames, CIDRs, arbitrary ports, exploit checks, and
-credentialed scans are not supported. The former SQLMap/Nikto API routes return
-`501 Not Implemented` rather than running active tests or showing simulated findings.
+The dashboard offers bounded discovery for private/loopback IPs and subnets up to 256
+addresses. It checks an allowlist of common ports and includes a separate Nmap service
+audit with OS fingerprinting (when privileges allow) and fixed safe scripts. Optional
+read-only SSH and SMB3 audits inventory authorized hosts; a Windows/Linux endpoint agent
+hashes files under explicitly selected roots. Public IPs, hostnames, arbitrary ports, and
+exploit scripts are not supported. SQLMap/Nikto routes return `501 Not Implemented` rather
+than running active tests or showing simulated findings.
 The global attack map uses the supplied `app/dashboard/worldmap.jpg` image and can show
 real proxy detections geolocated with either a local GeoLite2 City database or the
 optional online `ipwho.is` provider. Country and continent summaries are derived from the
@@ -51,11 +53,15 @@ credentials are disabled, and protected API routes still require `X-AIR-DS-KEY`.
 - A browser. Internet access is needed for the dashboard's CDN-hosted UI libraries and
   for online IP geolocation if that provider is enabled.
 
-Install the prerequisites on Debian/Ubuntu/WSL if they are missing:
+Install the prerequisites on Arch Linux in WSL if they are missing:
 ```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip openssl
+sudo pacman -Syu
+sudo pacman -S --needed python python-pip openssl openssh smbclient nmap
 ```
+
+The same commands work in a native Arch Linux environment. Keep the project and its
+virtual environment on the WSL filesystem or a mounted Windows directory accessible
+from WSL.
 
 ## Prepare the project
 
@@ -169,21 +175,61 @@ threat-intelligence metadata. They are separate from the optional schema-audit d
 The API's safe network discovery and imported threat intelligence features are available
 from the dashboard after entering the API key. The server does not run active
 vulnerability scans; disabled scanner endpoints return `501 Not Implemented`.
+The dashboard checks `GET /api/v1/scanners/capabilities` after authentication to show
+whether OpenSSH and `smbclient` are installed. “NOT IMPLEMENTED” marks active vulnerability
+tests the app does not perform; running the supported safe checks does not change that.
 
 ### Network discovery
 
 Use the dashboard's **Safe Network Discovery** panel, or authenticated
 `POST /api/v1/scanners/network` with JSON such as:
 ```json
-{"target":"192.168.1.10","profile":"advanced","ports":[22,80,443]}
+{"target":"192.168.1.0/24","profile":"advanced","ports":[22,80,443]}
 ```
-The target must be one private/loopback IP. Only ports 22, 53, 80, 443, 445, 3389,
-8080, and 8443 are accepted (maximum 8 per check). Host discovery and basic checks use
-this same bounded TCP-connect probe. OS fingerprinting, dynamic plugin scans,
-vulnerability tests (including web, Badlock, Shellshock, DROWN, and Intel AMT),
-credentialed patch audits, Shadow IT discovery, and endpoint malware/ransomware scans
-are not implemented; results are never fabricated. Uploaded files can still be checked
-against imported malware hashes via the existing file-scan feature.
+Targets must be loopback, RFC1918, or IPv6 ULA addresses/subnets with at most 256
+addresses. Only ports 22, 53, 80, 443, 445, 3389, 8080, and 8443 are accepted
+(maximum 8 per check). Basic checks include TCP connect, read-only SSH banners, SMB2/3
+negotiate, and HTTP HEAD response headers. An OS result from the basic path is only a
+low-confidence service banner hint; active OS fingerprinting is available through the
+separate safe Nmap action below. No exploit scripts are run.
+
+The separate **Run Safe Nmap Service Audit** action uses Nmap service-version detection,
+OS fingerprinting when raw-socket privileges are available, and a fixed allowlist of
+packaged safe scripts for SSH host keys, TLS configuration, SMB protocol/signing, and
+HTTP security headers. It is bounded to the same private targets and ports. It does not
+load arbitrary plugins or exploit scripts; safe scripts are lower risk but still send
+network probes.
+
+Credentialed audits are authenticated and limited to one private IP at a time:
+
+- `POST /api/v1/scanners/audit/ssh` uses the server's OpenSSH client, a key located
+  under that server user's `~/.ssh`, and strict `known_hosts` checking. It runs fixed,
+  read-only package update inventory commands on Linux or lists installed Windows
+  hotfixes. Install/configure OpenSSH and enroll host keys before use. Inventory is not
+  a definitive missing-patch assessment.
+- `POST /api/v1/scanners/audit/smb` requires `smbclient` and performs one SMB3
+  authenticated share-list request against IPv4. The supplied password is placed in a
+  temporary mode-600 file and removed after the request; no share contents are read.
+
+The optional Windows/Linux endpoint inventory runs locally with Python's standard
+library. Select directories explicitly; files over 50 MiB are skipped and at most 10,000
+files are hashed. It stores a local SQLite hash baseline and writes a JSON report:
+
+```bash
+python -m app.endpoint_agent --root /path/to/selected/directory --output endpoint-report.json
+```
+
+Repeat `--root` for additional directories. In the dashboard, choose the report to compare
+SHA-256 values with local imported malware indicators. The report includes relative file
+paths, hashes, sizes, and modification times, but not file contents. A baseline change
+signal is a coarse heuristic, not a ransomware detection verdict. No files are uploaded
+until an operator submits the report, and no endpoint containment or remediation is
+performed. Unknown hashes are not proven clean.
+
+To check the dashboard upload flow without using real endpoint data, choose
+`samples/endpoint-report-demo.json`. It is explicitly synthetic and should return no local
+hash match unless that exact sample hash has been imported into your threat-intelligence
+database.
 
 ### Local threat intelligence and proxy history
 

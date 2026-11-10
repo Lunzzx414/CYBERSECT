@@ -1,4 +1,5 @@
 import sqlite3
+import shutil
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -36,7 +37,12 @@ def test_dashboard_is_served():
     assert "text/html" in response.headers["content-type"]
     assert "AIR SOC" in response.text
     assert "SAFE NETWORK DISCOVERY" in response.text
-    assert "Credentialed patch / SMB / SSH audit" in response.text
+    assert "Private subnet discovery / safe service checks" in response.text
+    assert "Credentialed SSH inventory / SMB3 share audit" in response.text
+    assert "Windows/Linux endpoint hash &amp; baseline agent" in response.text or "Windows/Linux endpoint hash & baseline agent" in response.text
+    assert "READ-ONLY SSH PATCH INVENTORY" in response.text
+    assert "READ-ONLY SMB3 SHARE AUDIT" in response.text
+    assert "WINDOWS / LINUX ENDPOINT REPORT" in response.text
     assert "GLOBAL ATTACK MAP" in response.text
     assert "LIVE + SIMULATION" in response.text
     assert "SIMULATION ONLY" in response.text
@@ -47,6 +53,27 @@ def test_dashboard_is_served():
     assert "PROXY COUNTRIES BY CONTINENT" in response.text
     assert "configured geolocation provider" in response.text
     assert "local GeoLite2 coordinates" not in response.text
+
+
+def test_scanner_capability_status_reflects_runtime_tools():
+    response = client.get("/api/v1/scanners/capabilities", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    capabilities = response.json()
+    assert capabilities["network_discovery"]["status"] == "available"
+    assert capabilities["safe_nmap_audit"]["status"] == (
+        "available" if shutil.which("nmap") else "needs_setup"
+    )
+    assert capabilities["os_identification"]["status"] in {"available", "limited"}
+    assert capabilities["ssh_audit"]["status"] == (
+        "available" if shutil.which("ssh") else "needs_setup"
+    )
+    assert capabilities["smb_audit"]["status"] == (
+        "available" if shutil.which("smbclient") else "needs_setup"
+    )
+    assert capabilities["endpoint_agent"]["status"] == "available"
+    assert capabilities["safe_configuration_checks"]["status"] == "available"
+    assert capabilities["active_vulnerability_scans"]["status"] == "not_implemented"
 
 
 def test_dashboard_world_map_asset_is_served():
@@ -175,7 +202,11 @@ def test_safe_network_scanner_is_bounded_and_never_claims_vulnerability_findings
     assert result["target"] == "127.0.0.1"
     assert result["os_identification"]["status"] == "not_performed"
     assert "no vulnerability tests" in result["scope"]
-    assert "findings" not in result
+    assert isinstance(result["findings"], list)
+    assert all(
+        finding["check"] not in {"sql-injection", "command-injection", "remote-code-execution"}
+        for finding in result["findings"]
+    )
 
 
 def test_safe_network_scanner_rejects_public_hosts_and_unapproved_ports():
@@ -198,6 +229,17 @@ def test_safe_network_scanner_rejects_public_hosts_and_unapproved_ports():
     assert public_target.status_code == 400
     assert disallowed_port.status_code == 400
     assert advanced_without_ports.status_code == 400
+
+
+def test_safe_nmap_audit_rejects_public_targets_before_launching_nmap():
+    response = client.post(
+        "/api/v1/scanners/nmap-safe",
+        headers=AUTH_HEADERS,
+        json={"target": "8.8.8.8"},
+    )
+
+    assert response.status_code == 400
+    assert "Only loopback" in response.json()["detail"]
 
 
 def test_legacy_active_vulnerability_scanners_are_disabled_not_simulated():

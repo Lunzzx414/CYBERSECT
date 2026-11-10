@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
 from app.hardened_security_engine import HardenedSecurityEngine
@@ -11,10 +13,13 @@ app = FastAPI(
 )
 
 API_KEY_NAME = "X-AIR-DS-KEY"
+MAX_SCAN_FILE_BYTES = 2 * 1024 * 1024
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 def verify_api_key(api_key: str = Security(api_key_header)):
-    if not api_key or api_key != settings.API_KEY:
+    if not api_key or not hmac.compare_digest(
+        api_key.encode("utf-8"), settings.API_KEY.encode("utf-8")
+    ):
         raise HTTPException(status_code=401, detail="Authentication Failed: Invalid or missing Enterprise API Key.")
     return api_key
 
@@ -50,7 +55,10 @@ def secure_data(user: str, request: Request):
 
 @app.post("/api/v1/security/scan-file", dependencies=[Depends(verify_api_key)])
 async def scan_file(file: UploadFile = File(...)):
-    content = await file.read()
+    content = await file.read(MAX_SCAN_FILE_BYTES + 1)
+    await file.close()
+    if len(content) > MAX_SCAN_FILE_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds the 2 MiB scan limit.")
     filename = file.filename or "unknown"
     result = HardenedSecurityEngine.inspect_file(filename, content)
     if result["malicious"]:
