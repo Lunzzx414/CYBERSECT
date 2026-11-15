@@ -133,6 +133,23 @@ copy the `Dashboard API key:` value from the terminal running `run_local.sh` and
 again in the dashboard. If you need to retrieve it later, read only the `AIR_DS_API_KEY`
 line from `~/.config/air-ds/environment`. Do not share this key or the separate `SECRET_KEY`.
 
+### Run the local lab simulation
+
+With the server running, open another terminal in the project root and run:
+```bash
+chmod +x demo_lab.sh
+./demo_lab.sh
+```
+
+The script targets only `127.0.0.1` on port 8012. Set `CYBERSECT_PORT` if the server uses
+another port, for example `CYBERSECT_PORT=8013 ./demo_lab.sh`. It prompts for the dashboard
+API key without displaying the input. The demo sends a normal request, URL-encoded SQLi,
+an XSS marker in a header, an inert suspicious-file sample, and a synthetic FIM hash
+mismatch. Expected outcomes are HTTP 200, three HTTP 403 detections, and
+`tamper_detected: true`. The uploaded sample is inspected as text and never executed; the
+FIM step submits a mismatch to the API and does not modify any file. The script requires
+`curl` and writes detections to the local proxy history.
+
 The dashboard's CORS policy allows browser requests from any origin, but this does not
 make the localhost server reachable from other computers. Cookie credentials are disabled,
 and protected API routes still require the API key.

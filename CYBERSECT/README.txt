@@ -78,6 +78,25 @@ example:
 
     AIR_DS_PORT=8013 ./run_local.sh
 
+LOCAL LAB SIMULATION
+~~~~~~~~~~~~~~~~~~~~
+
+With the server running, open a second terminal in the project directory and run:
+
+    chmod +x demo_lab.sh
+    ./demo_lab.sh
+
+The demo targets only 127.0.0.1 on port 8012. If you used another port, set
+CYBERSECT_PORT, for example:
+
+    CYBERSECT_PORT=8013 ./demo_lab.sh
+
+It prompts for the dashboard API key without displaying the input. It demonstrates a
+normal request, SQL injection and XSS detections, an inert suspicious-file upload, and a
+synthetic FIM hash mismatch. The uploaded sample is inspected as text and never executed;
+the FIM step does not modify a file. The script requires curl and adds detection records
+to the local proxy history.
+
 After connecting with the API key, the Scan Capability Status panel checks whether SSH,
 SMB, and Nmap utilities are installed. AVAILABLE means the feature and server dependency
 are present; target reachability, credentials, host keys, and endpoint selection are still
