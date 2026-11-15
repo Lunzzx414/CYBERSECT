@@ -147,8 +147,10 @@ API key without displaying the input. The demo sends a normal request, URL-encod
 an XSS marker in a header, an inert suspicious-file sample, and a synthetic FIM hash
 mismatch. Expected outcomes are HTTP 200, three HTTP 403 detections, and
 `tamper_detected: true`. The uploaded sample is inspected as text and never executed; the
-FIM step submits a mismatch to the API and does not modify any file. The script requires
-`curl` and writes detections to the local proxy history.
+FIM step submits a mismatch to the API and does not modify any file. The script writes
+detections to **Proxy Attack History** and separately posts clearly labeled synthetic
+incidents to the main **Incident Feed**. The dashboard must be connected with the same API
+key; its data refreshes automatically every 15 seconds. The script requires `curl`.
 
 The dashboard's CORS policy allows browser requests from any origin, but this does not
 make the localhost server reachable from other computers. Cookie credentials are disabled,

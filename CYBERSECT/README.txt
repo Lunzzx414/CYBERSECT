@@ -95,7 +95,10 @@ It prompts for the dashboard API key without displaying the input. It demonstrat
 normal request, SQL injection and XSS detections, an inert suspicious-file upload, and a
 synthetic FIM hash mismatch. The uploaded sample is inspected as text and never executed;
 the FIM step does not modify a file. The script requires curl and adds detection records
-to the local proxy history.
+to Proxy Attack History. It also submits clearly labeled synthetic incidents to the main
+Incident Feed. Connect the dashboard with the same API key; dashboard data refreshes
+automatically every 15 seconds. The FIM step submits a mismatch to the API and does not
+modify a file.
 
 After connecting with the API key, the Scan Capability Status panel checks whether SSH,
 SMB, and Nmap utilities are installed. AVAILABLE means the feature and server dependency
