@@ -62,9 +62,23 @@ sudo pacman -Syu
 sudo pacman -S --needed python python-pip openssl openssh smbclient nmap
 ```
 
-The same commands work in a native Arch Linux environment. Keep the project and its
-virtual environment on the WSL filesystem or a mounted Windows directory accessible
-from WSL.
+For Debian or Ubuntu, use `apt` and the Python 3 package names:
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv openssl openssh-client smbclient nmap
+```
+
+`openssh-client` provides the `ssh` command used by the read-only SSH audit. You do not
+need `openssh-server` unless you also want this machine to accept incoming SSH connections.
+Ubuntu may not provide a `python` command by default; this guide uses `python3` throughout,
+so no alias package is required. If you specifically want the `python` command to invoke
+Python 3, optionally install `python-is-python3`:
+```bash
+sudo apt install python-is-python3
+```
+
+Keep the project and its virtual environment on a filesystem accessible to your Linux
+environment (including WSL).
 
 ## Prepare the project
 
@@ -81,8 +95,8 @@ Create it, activate it, and install the dependencies listed in `requirements.txt
 ```bash
 python3 -m venv ../venv
 source ../venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
 ```
 
 The app uses Python packages only; SQLite is included with Python, and its databases are
@@ -92,6 +106,7 @@ created automatically on first startup. No separate database server is needed.
 
 From the project root, run:
 ```bash
+chmod +x run_local.sh
 ./run_local.sh
 ```
 
@@ -111,6 +126,12 @@ only, so you must enter it again after reloading the dashboard. The key is stabl
 restarts: the script reuses the saved configuration and creates new keys only if that
 configuration file is deleted. Keep the key private. On Linux, the config directory and
 file are restricted to `700` and `600` permissions.
+
+The API key is a private local password generated for your own server; there is no shared
+or default key. If the dashboard shows `401 Unauthorized` or says the API key was cleared,
+copy the `Dashboard API key:` value from the terminal running `run_local.sh` and enter it
+again in the dashboard. If you need to retrieve it later, read only the `AIR_DS_API_KEY`
+line from `~/.config/air-ds/environment`. Do not share this key or the separate `SECRET_KEY`.
 
 The dashboard's CORS policy allows browser requests from any origin, but this does not
 make the localhost server reachable from other computers. Cookie credentials are disabled,
@@ -152,7 +173,7 @@ shell profile if you want it to persist.
 This build is not air-gapped because Tailwind, Chart.js, Lucide, and Google Fonts are loaded
 from CDNs. For a closed-network deployment, vendor pinned copies under
 `app/dashboard/vendor/` before deployment. Prepare the CISA KEV intelligence base on a
-connected machine with `python -m app.import_threat_intel --source cisa-kev --fetch`, then
+connected machine with `python3 -m app.import_threat_intel --source cisa-kev --fetch`, then
 copy the resulting `data/*.sqlite3` files to the unit. Do not claim air-gapped operation
 until frontend assets and all required data are staged locally.
 
@@ -228,7 +249,7 @@ library. Select directories explicitly; files over 50 MiB are skipped and at mos
 files are hashed. It stores a local SQLite hash baseline and writes a JSON report:
 
 ```bash
-python -m app.endpoint_agent --root /path/to/selected/directory --output endpoint-report.json
+python3 -m app.endpoint_agent --root /path/to/selected/directory --output endpoint-report.json
 ```
 
 Repeat `--root` for additional directories. In the dashboard, choose the report to compare
@@ -248,13 +269,13 @@ database.
 Import the official CISA Known Exploited Vulnerabilities catalog into the local
 threat-intelligence database:
 ```bash
-python -m app.import_threat_intel --source cisa-kev --fetch
+python3 -m app.import_threat_intel --source cisa-kev --fetch
 ```
 The feed can be refreshed by rerunning that command. Import authorized/local CSV
 metadata exports for other feeds:
 ```bash
-python -m app.import_threat_intel --source exploitdb --file /path/to/files_exploits.csv
-python -m app.import_threat_intel --source malwarebazaar --file /path/to/malwarebazaar.csv
+python3 -m app.import_threat_intel --source exploitdb --file /path/to/files_exploits.csv
+python3 -m app.import_threat_intel --source malwarebazaar --file /path/to/malwarebazaar.csv
 ```
 Exploit-DB metadata and MalwareBazaar SHA-256 metadata are imported only; exploit code
 and malware samples are not. These sources require separately obtained CSV exports.
@@ -271,7 +292,7 @@ Protected lookup endpoints are `GET /api/v1/threat-intel/summary`,
 
 Run tests from the project root:
 ```bash
-../venv/bin/python -m pytest -q
+../venv/bin/python3 -m pytest -q
 ```
 
 ---

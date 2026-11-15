@@ -1,7 +1,7 @@
 CYBERSECT SCANNER SETUP AND QUICK START
 ================================================
 
-This guide explains how to prepare the Arch Linux WSL server, open the dashboard,
+This guide explains how to prepare an Arch Linux or Debian/Ubuntu server, open the dashboard,
 run the supported network checks, configure SSH/SMB audits, and use the Windows/Linux
 endpoint report agent.
 
@@ -17,30 +17,35 @@ Clone the current CYBERSECT repository and enter its project directory:
 If you already have a checkout, open its project directory (the directory containing
 requirements.txt and run_local.sh) instead of cloning it again.
 
-2. ARCH LINUX WSL SETUP
------------------------
+2. INSTALL SYSTEM PREREQUISITES
+-------------------------------
 
-Open Arch WSL and enter the project directory. If the repository is on the Windows C: drive:
-
-    wsl -d archlinux
-    cd /mnt/c/path/to/CYBERSECT
-
-Install the runtime and scanner utilities:
+On Arch Linux, install the system packages with pacman:
 
     sudo pacman -Syu --needed python python-pip openssl openssh smbclient nmap
 
+On Debian or Ubuntu, install the corresponding packages with apt:
+
+    sudo apt update
+    sudo apt install -y python3 python3-pip python3-venv openssl openssh-client smbclient nmap
+
 The scanner utilities are installed on the server running the dashboard. The SSH audit
-uses OpenSSH; the SMB audit uses smbclient; the safe service-script audit uses Nmap.
-Nmap OS fingerprinting also needs raw-socket privileges. The package command performs
-Arch's normal full system update before installing packages.
+uses the OpenSSH client, the SMB audit uses smbclient, and the safe service-script audit
+uses Nmap. Nmap OS fingerprinting also needs raw-socket privileges. Ubuntu calls the SSH
+client package `openssh-client`; `openssh-server` is only needed if this machine must
+accept incoming SSH connections. These instructions use `python3`, since some systems
+do not provide a `python` command. To optionally make `python` run Python 3 on Ubuntu,
+install `python-is-python3`:
+
+    sudo apt install python-is-python3
 
 Create the Python virtual environment beside the CYBERSECT project directory and install
 the Python dependencies:
 
-    python -m venv ../venv
+    python3 -m venv ../venv
     source ../venv/bin/activate
-    python -m pip install --upgrade pip
-    python -m pip install -r requirements.txt
+    python3 -m pip install --upgrade pip
+    python3 -m pip install -r requirements.txt
 
 The project creates its SQLite databases on first startup. No database server is needed.
 
@@ -50,6 +55,7 @@ The project creates its SQLite databases on first startup. No database server is
 
 From the project directory (the directory containing run_local.sh), start the server:
 
+    chmod +x run_local.sh
     ./run_local.sh
 
 Keep the terminal running. The dashboard is at:
@@ -60,6 +66,11 @@ Enter the AIR_DS_API_KEY printed by the launch script into the dashboard's API k
 If the key is not available in the launch output, read only the AIR_DS_API_KEY value from:
 
     ~/.config/air-ds/environment
+
+The API key is a private local password generated for this server; there is no shared or
+default key. If the dashboard reports 401 Unauthorized or says the API key was cleared,
+copy the Dashboard API key value from the terminal running run_local.sh and enter it again.
+Do not share this key or the separate SECRET_KEY.
 
 Do not paste or share SECRET_KEY. The dashboard holds the API key in the browser tab for
 its current session. To use another port, set AIR_DS_PORT before starting the script, for
@@ -134,15 +145,15 @@ larger than 50 MiB are skipped, and the report is capped at 10,000 files.
 
 Linux example:
 
-    python -m app.endpoint_agent --root /home/alice/Documents --output endpoint-report.json
+    python3 -m app.endpoint_agent --root /home/alice/Documents --output endpoint-report.json
 
 Windows PowerShell example:
 
-    python -m app.endpoint_agent --root "C:\Users\Alice\Documents" --output "C:\Users\Alice\endpoint-report.json"
+    python3 -m app.endpoint_agent --root "C:\Users\Alice\Documents" --output "C:\Users\Alice\endpoint-report.json"
 
 Optional --state-file lets you choose where the local SQLite baseline is stored:
 
-    python -m app.endpoint_agent --root /home/alice/Documents --output endpoint-report.json --state-file /home/alice/.local/state/cybersect.sqlite3
+    python3 -m app.endpoint_agent --root /home/alice/Documents --output endpoint-report.json --state-file /home/alice/.local/state/cybersect.sqlite3
 
 The agent hashes files locally. It does not upload file contents or automatically isolate,
 modify, or delete anything. The generated JSON report contains relative paths, SHA-256
@@ -182,12 +193,12 @@ vulnerability assessment.
 
 Run the existing project checks from the project directory:
 
-    python -m compileall -q app
-    python -m pytest -q
+    python3 -m compileall -q app
+    python3 -m pytest -q
 
 If WSL reports access denied, resolve the Windows WSL launch issue before running these
 commands. If the dashboard cannot start, verify that ../venv exists and contains FastAPI
 and Uvicorn, then reinstall requirements.txt in the activated environment. If an SSH or
-SMB audit says NEEDS SETUP, install the missing Arch utility and restart the server so its
-capability status refreshes. SSH also requires the correct server-side key and known_hosts
+SMB audit says NEEDS SETUP, install the missing utility with your distribution's package
+manager and restart the server so its capability status refreshes. SSH also requires the correct server-side key and known_hosts
 entry; SMB requires a reachable authorized host and valid credentials.
