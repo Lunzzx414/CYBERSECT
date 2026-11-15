@@ -1,4 +1,4 @@
-CYBERSECT / AIR-DS SCANNER SETUP AND QUICK START
+CYBERSECT SCANNER SETUP AND QUICK START
 ================================================
 
 This guide explains how to prepare the Arch Linux WSL server, open the dashboard,
@@ -6,13 +6,24 @@ run the supported network checks, configure SSH/SMB audits, and use the Windows/
 endpoint report agent.
 
 
-1. ARCH LINUX WSL SETUP
+1. GET THE PROJECT
+------------------
+
+Clone the current CYBERSECT repository and enter its project directory:
+
+    git clone https://github.com/Lunzzx414/CYBERSECT.git
+    cd CYBERSECT
+
+If you already have a checkout, open its project directory (the directory containing
+requirements.txt and run_local.sh) instead of cloning it again.
+
+2. ARCH LINUX WSL SETUP
 -----------------------
 
-Open Arch WSL and enter the project directory. For this checkout:
+Open Arch WSL and enter the project directory. If the repository is on the Windows C: drive:
 
     wsl -d archlinux
-    cd /mnt/c/arkknight/CYBERSECT/CYBERSECT
+    cd /mnt/c/path/to/CYBERSECT
 
 Install the runtime and scanner utilities:
 
@@ -34,10 +45,10 @@ the Python dependencies:
 The project creates its SQLite databases on first startup. No database server is needed.
 
 
-2. START AND CONNECT TO THE DASHBOARD
+3. START AND CONNECT TO THE DASHBOARD
 -------------------------------------
 
-From /mnt/c/arkknight/CYBERSECT/CYBERSECT, start the server:
+From the project directory (the directory containing run_local.sh), start the server:
 
     ./run_local.sh
 
@@ -62,7 +73,7 @@ are present; target reachability, credentials, host keys, and endpoint selection
 required to run an audit. NOT IMPLEMENTED means the app does not perform that check.
 
 
-3. PRIVATE NETWORK DISCOVERY
+4. PRIVATE NETWORK DISCOVERY
 ----------------------------
 
 Use the Safe Network Discovery form. Enter one private IP or a private CIDR with no more
@@ -85,7 +96,7 @@ The basic scanner's OS hints are low confidence. Nmap OS fingerprinting requires
 socket privileges and can fail when the server is not running with those privileges.
 
 
-4. READ-ONLY SSH INVENTORY
+5. READ-ONLY SSH INVENTORY
 --------------------------
 
 The SSH audit reads Linux package update information or installed Windows hotfix inventory.
@@ -105,7 +116,7 @@ on cached package-manager metadata; Windows output lists installed hotfixes and 
 prove that no updates are missing.
 
 
-5. READ-ONLY SMB3 SHARE AUDIT
+6. READ-ONLY SMB3 SHARE AUDIT
 -----------------------------
 
 The SMB audit uses smbclient to make one authenticated SMB3 share-list request to one
@@ -114,7 +125,7 @@ the authorized account, optional domain, and password in the dashboard. The pass
 used for that request and placed in a temporary restricted file that is removed afterward.
 
 
-6. WINDOWS / LINUX ENDPOINT REPORT AGENT
+7. WINDOWS / LINUX ENDPOINT REPORT AGENT
 ----------------------------------------
 
 Run the standard-library Python agent locally on the Windows or Linux endpoint. Select
@@ -148,7 +159,7 @@ local indicator match unless that exact hash was imported. An unknown hash is no
 verdict. The baseline-change signal is a heuristic, not a ransomware determination.
 
 
-7. CHECK RESULTS AND LIMITS
+8. CHECK RESULTS AND LIMITS
 ---------------------------
 
 The dashboard's result dialog reports the observations from each run. A capability badge
@@ -166,7 +177,7 @@ profile is limited to its fixed packaged script list and must not be treated as 
 vulnerability assessment.
 
 
-8. TESTS AND TROUBLESHOOTING
+9. TESTS AND TROUBLESHOOTING
 ----------------------------
 
 Run the existing project checks from the project directory:

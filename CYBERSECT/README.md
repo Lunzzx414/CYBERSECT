@@ -1,8 +1,6 @@
-# AIR-DS Enterprise Security Gateway & Multi-Sensor Defense Shield
+# CYBERSECT Security Gateway & Multi-Sensor Defense
 
-Repository: [github.com/Lunzzx414/air-ds](https://github.com/Lunzzx414/air-ds)
-
-AIR-DS Enterprise is a local Security Operations Center (SOC) dashboard and multi-sensor
+CYBERSECT is a local Security Operations Center (SOC) dashboard and multi-sensor
 gateway. This guide covers preparing the environment, starting the backend, connecting
 the dashboard, and configuring its data sources.
 
@@ -18,13 +16,17 @@ An ASGI proxy sensor inspects requests before they reach FastAPI routes, blocks 
 SQL injection/XSS patterns and known malware hashes, and persists event metadata and a
 request fingerprint without storing request bodies. Its local file heuristics and
 signatures are defensive indicators, not a substitute for a full malware sandbox or
-network-edge WAF. The active resource endpoint is a weighted threshold scorer; the
-separate PyTorch model definition has no trained weights and is not loaded by the API.
+network-edge WAF. The active resource endpoint is a weighted resource anomaly evaluator using a fixed
+threshold. The separate PyTorch model definition has no trained weights and is not loaded
+by the API; a trained model remains a roadmap item.
 Reported incident responses are recommendations only; firewall and container enforcement
 integrations are not configured.
 
-The dashboard offers bounded discovery for private/loopback IPs and subnets up to 256
-addresses. It checks an allowlist of common ports and includes a separate Nmap service
+The proxy sensor blocks matching malicious HTTP requests with HTTP 403 without operator
+intervention. Host and network responses are recommendations only; the system does not
+isolate hosts or block IPs. The dashboard also offers bounded audit discovery for private
+and loopback IPs and subnets up to 256 addresses. This is an audit tool, not a live
+port-scan detector. It checks an allowlist of common ports and includes a separate Nmap service
 audit with OS fingerprinting (when privileges allow) and fixed safe scripts. Optional
 read-only SSH and SMB3 audits inventory authorized hosts; a Windows/Linux endpoint agent
 hashes files under explicitly selected roots. Public IPs, hostnames, arbitrary ports, and
@@ -50,8 +52,9 @@ credentials are disabled, and protected API routes still require `X-AIR-DS-KEY`.
 - Linux, macOS, or WSL2 with Bash. The launch script is not a PowerShell script.
 - Python 3.10 or newer, `pip`, and Python's `venv` module.
 - OpenSSL for first-run generation of private API and signing keys.
-- A browser. Internet access is needed for the dashboard's CDN-hosted UI libraries and
-  for online IP geolocation if that provider is enabled.
+- A browser. The dashboard currently loads UI libraries from CDNs, so a connected browser
+  is required. The current build is not air-gapped. Online IP geolocation also requires
+  internet access if that provider is enabled.
 
 Install the prerequisites on Arch Linux in WSL if they are missing:
 ```bash
@@ -65,10 +68,12 @@ from WSL.
 
 ## Prepare the project
 
-Clone the project and enter its root directory:
+Clone the current repository and enter its project root directory, or enter the root
+directory of an existing checkout:
+
 ```bash
-git clone https://github.com/Lunzzx414/air-ds.git
-cd air-ds
+git clone https://github.com/Lunzzx414/CYBERSECT.git
+cd CYBERSECT
 ```
 
 `run_local.sh` expects the virtual environment in a sibling directory named `venv`.
@@ -132,10 +137,10 @@ export AIR_DS_GEOLITE2_CITY_DB_PATH=/path/to/GeoLite2-City.mmdb
 Other supported shell overrides include:
 ```bash
 AIR_DS_PORT=8013 ./run_local.sh
-AIR_DS_DATA_DIR=/path/to/air-ds-data ./run_local.sh
+AIR_DS_DATA_DIR=/path/to/cybersect-data ./run_local.sh
 SQLITE_DATABASE_PATH=/path/to/application.sqlite ./run_local.sh
 ```
-The first changes the listening port; the second changes where AIR-DS creates its threat
+The first changes the listening port; the second changes where CYBERSECT creates its threat
 intelligence and proxy-history databases; the third selects a separate SQLite file for
 read-only schema analysis. Set an override each time you launch, or export it in your
 shell profile if you want it to persist.
@@ -143,6 +148,13 @@ shell profile if you want it to persist.
 ---
 
 ## Dashboard use and database setup
+
+This build is not air-gapped because Tailwind, Chart.js, Lucide, and Google Fonts are loaded
+from CDNs. For a closed-network deployment, vendor pinned copies under
+`app/dashboard/vendor/` before deployment. Prepare the CISA KEV intelligence base on a
+connected machine with `python -m app.import_threat_intel --source cisa-kev --fetch`, then
+copy the resulting `data/*.sqlite3` files to the unit. Do not claim air-gapped operation
+until frontend assets and all required data are staged locally.
 
 The dashboard's **SQLite database static analysis** button audits the SQLite file selected
 by `SQLITE_DATABASE_PATH` in read-only mode. You can also upload a database snapshot (up to
@@ -246,7 +258,10 @@ python -m app.import_threat_intel --source malwarebazaar --file /path/to/malware
 ```
 Exploit-DB metadata and MalwareBazaar SHA-256 metadata are imported only; exploit code
 and malware samples are not. These sources require separately obtained CSV exports.
-Unknown hashes are reported as **Unknown**, not Clean. The protected dashboard/API
+Unknown hashes are reported as **Unknown**, not Clean. File upload heuristics use crude
+byte-string indicators (including `eval(`, `exec(`, and `os.system(`) and can flag legitimate
+source code. Treat these as review signals, verify provenance and context, and use an
+isolated malware analysis process for confirmation. The protected dashboard/API
 provides local feed counts, CISA KEV CVE lookup, and recent sensor events. The sensor
 keeps attack records in `attack_history.sqlite3`, separate from feed records in
 `threat_intel.sqlite3`, and limits stored history to the latest 10,000 detections.
@@ -260,4 +275,4 @@ Run tests from the project root:
 ```
 
 ---
-*AIR-DS Enterprise SOC Dashboard & Gateway.*
+*CYBERSECT SOC Dashboard & Gateway.*
